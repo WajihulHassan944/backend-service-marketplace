@@ -1,6 +1,5 @@
 import express from "express";
 import userRouter from "./routes/user.js";
-import taskRouter from "./routes/task.js";
 import { config } from "dotenv";
 import cookieParser from "cookie-parser";
 import { errorMiddleware } from "./middlewares/error.js";
@@ -25,10 +24,9 @@ app.use(
 
 // Using routes
 app.use("/api/v1/users", userRouter);
-app.use("/api/v1/task", taskRouter);
 
 app.get("/", (req, res) => {
-  res.send("Nice working");
+  res.send("Nice working backend by Muhammad Furqan");
 });
 
 // Using Error Middleware
