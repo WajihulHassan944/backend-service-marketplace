@@ -2,6 +2,57 @@ import { User } from "../models/user.js";
 import bcrypt from "bcrypt";
 import { sendCookie } from "../utils/features.js";
 import ErrorHandler from "../middlewares/error.js";
+import nodemailer from "nodemailer";
+export const blockUser = async (req, res, next) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { blocked: true },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "User blocked successfully",
+      user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const unblockUser = async (req, res, next) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { blocked: false },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "User unblocked successfully",
+      user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 
 export const getAllBuyers = async (req, res, next) => {
@@ -69,7 +120,6 @@ export const deleteUserById = async (req, res, next) => {
 };
 
 
-
 export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -80,6 +130,15 @@ export const login = async (req, res, next) => {
       return next(new ErrorHandler("Invalid Email or Password", 400));
     }
 
+    // Check if user is blocked
+    if (user.blocked) {
+      return res.status(403).json({
+        success: false,
+        message: "Account is blocked. Please contact support.",
+      });
+    }
+
+    // Check if user is not verified
     if (!user.verified) {
       return res.status(403).json({
         success: false,
@@ -101,11 +160,12 @@ export const login = async (req, res, next) => {
       country: user.country,
       role: user.role,
       verified: user.verified,
+      blocked: user.blocked,
       createdAt: user.createdAt,
     };
 
     sendCookie(user, res, "Login Successful", 200, { user: cleanedUser });
-  
+
   } catch (error) {
     next(error);
   }
@@ -158,7 +218,11 @@ export const register = async (req, res, next) => {
       role: roles,
     });
 
-    // Send response with user data (excluding password)
+    // ✅ Send email to admin if user registered as seller
+    if (roles.includes("seller")) {
+      await sendSellerApprovalEmail(user);
+    }
+
     res.status(201).json({
       success: true,
       message: "Registered Successfully",
@@ -176,6 +240,58 @@ export const register = async (req, res, next) => {
 
   } catch (error) {
     next(error);
+  }
+};
+
+const sendSellerApprovalEmail = async (user) => {
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.ADMIN_EMAIL,
+      pass: process.env.ADMIN_EMAIL_PASS,
+    },
+  });
+
+  const approvalLink = `${process.env.BACKEND_URL}/api/users/verify/${user._id}`;
+
+  const mailOptions = {
+    from: `"CareWatch Admin" <${process.env.ADMIN_EMAIL}>`,
+    to: process.env.ADMIN_EMAIL,
+    subject: "New Seller Registration Pending Approval",
+    html: `
+      <h2>New Seller Registration</h2>
+      <p><strong>${user.firstName} ${user.lastName}</strong> has registered as a <strong>seller</strong>.</p>
+      <p>Email: ${user.email}</p>
+      <p>Country: ${user.country}</p>
+      <a href="${approvalLink}" style="display: inline-block; padding: 10px 15px; background-color: #28a745; color: white; text-decoration: none; border-radius: 5px; cursor:pointer;">
+        Approve Seller
+      </a>
+    `,
+  };
+
+  await transporter.sendMail(mailOptions);
+};
+
+export const verifyUser = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      { verified: true },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).send("<h2>User not found</h2>");
+    }
+
+    res.send(`
+      <h2>Seller Approved</h2>
+      <p>The seller <strong>${user.firstName} ${user.lastName}</strong> has been verified successfully.</p>
+    `);
+  } catch (error) {
+    res.status(500).send("<h2>Something went wrong. Please try again later.</h2>");
   }
 };
 
