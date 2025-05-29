@@ -49,12 +49,23 @@ export const login = async (req, res, next) => {
     if (!isMatch) {
       return next(new ErrorHandler("Invalid Email or Password", 400));
     }
+ const cleanedUser = {
+      _id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      country: user.country,
+      role: user.role,
+      verified: user.verified,
+      createdAt: user.createdAt,
+    };
 
-    sendCookie(user, res, `Welcome back, ${user.firstName}`, 200);
+    sendCookie(user, res, `User Data, ${user}`, 200);
   } catch (error) {
     next(error);
   }
 };
+
 export const getAllUsers = async (req, res, next) => {
   try {
     const users = await User.find(); // Fetch all users
