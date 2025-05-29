@@ -23,7 +23,7 @@ app.use(
 );
 
 // Using routes
-app.use("/api/v1/users", userRouter);
+app.use("/api/users", userRouter);
 
 app.get("/", (req, res) => {
   res.send("Nice working backend by Muhammad Furqan");
