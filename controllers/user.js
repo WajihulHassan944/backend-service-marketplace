@@ -3,6 +3,50 @@ import bcrypt from "bcrypt";
 import { sendCookie } from "../utils/features.js";
 import ErrorHandler from "../middlewares/error.js";
 
+
+export const getAllBuyers = async (req, res, next) => {
+  try {
+    const buyers = await User.find({ role: "buyer" });
+    res.status(200).json({
+      success: true,
+      users: buyers,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAllSellers = async (req, res, next) => {
+  try {
+    const sellers = await User.find({ role: "seller" });
+    res.status(200).json({
+      success: true,
+      users: sellers,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAllAdmins = async (req, res, next) => {
+  try {
+    const admins = await User.find({
+      role: "admin",
+    });
+
+    res.status(200).json({
+      success: true,
+      users: admins,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
+
+
 export const deleteUserById = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -36,7 +80,6 @@ export const login = async (req, res, next) => {
       return next(new ErrorHandler("Invalid Email or Password", 400));
     }
 
-    // ⛔ Block login if user is not verified
     if (!user.verified) {
       return res.status(403).json({
         success: false,
@@ -49,7 +92,8 @@ export const login = async (req, res, next) => {
     if (!isMatch) {
       return next(new ErrorHandler("Invalid Email or Password", 400));
     }
- const cleanedUser = {
+
+    const cleanedUser = {
       _id: user._id,
       firstName: user.firstName,
       lastName: user.lastName,
@@ -60,7 +104,8 @@ export const login = async (req, res, next) => {
       createdAt: user.createdAt,
     };
 
-    sendCookie(user, res, `User Data, ${user}`, 200);
+    sendCookie(user, res, "Login Successful", 200, { user: cleanedUser });
+  
   } catch (error) {
     next(error);
   }
