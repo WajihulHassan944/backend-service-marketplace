@@ -20,4 +20,6 @@ router.put("/:id/unblock", isAuthenticatedSuperAdmin, unblockUser);
 router.get("/verify/:id", verifyUser);
 router.post("/request-seller", isAuthenticated, requestSellerRole);
 
+
+
 export default router;
