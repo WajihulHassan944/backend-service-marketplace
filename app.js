@@ -25,7 +25,7 @@ app.use(
 app.use("/api/users", userRouter);
 
 app.get("/", (req, res) => {
-  res.send("Nice working backend by Muhammad Furqan");
+  res.send("Nice working backend by Muhammad Furqan Wajih");
 });
 
 // Using Error Middleware
