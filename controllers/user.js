@@ -6,6 +6,70 @@ import nodemailer from "nodemailer";
 import cloudinary from "../utils/cloudinary.js";
 import streamifier from "streamifier";
 
+import { OAuth2Client } from "google-auth-library";
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+export const googleLogin = async (req, res, next) => {
+  const { token } = req.body;
+
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { name, email, picture } = payload;
+
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      const [firstName, lastName = ""] = name.split(" ");
+
+      user = await User.create({
+        firstName,
+        lastName,
+        email,
+        profileUrl: picture,
+        verified: true,
+        isNotificationsEnabled: true,
+        isSubscribed: true,
+        isAgreed: true,
+      });
+
+      // Send welcome email to user
+      await transporter.sendMail({
+        from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
+        to: user.email,
+        subject: "Welcome to Service Marketplace!",
+        html: `
+          <h2>Welcome ${user.firstName}!</h2>
+          <p>Thanks for signing up using Google. Start exploring our services today.</p>
+        `,
+      });
+
+      // Notify admin of new signup
+      await transporter.sendMail({
+        from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
+        to: process.env.ADMIN_EMAIL,
+        subject: "New Google Signup Notification",
+        html: `
+          <p>A new user signed up via Google:</p>
+          <ul>
+            <li>Name: ${user.firstName} ${user.lastName}</li>
+            <li>Email: ${user.email}</li>
+          </ul>
+        `,
+      });
+    }
+
+    sendCookie(user, res, `Welcome back, ${user.firstName}`, 200);
+
+  } catch (error) {
+    console.error("Google login error", error);
+    next(new ErrorHandler("Google Login Failed", 500));
+  }
+};
 export const blockUser = async (req, res, next) => {
   try {
     const user = await User.findByIdAndUpdate(
@@ -188,6 +252,36 @@ export const getAllUsers = async (req, res, next) => {
   }
 };
 
+
+
+export const requestSellerRole = async (req, res, next) => {
+  try {
+    const { userId } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) return next(new ErrorHandler("User not found", 404));
+
+    if (!user.role.includes('seller')) {
+      user.role.push('seller');
+    }
+
+    user.verified = false;
+
+    await user.save();
+
+    await sendSellerApprovalEmail(user);
+
+    res.status(200).json({
+      success: true,
+      message: "Seller role requested. Awaiting admin approval.",
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 export const register = async (req, res, next) => {
   try {
     const {
@@ -269,7 +363,7 @@ const sendSellerApprovalEmail = async (user) => {
   const approvalLink = `https://backend-service-marketplace.vercel.app/api/users/verify/${user._id}`;
 
   const mailOptions = {
-    from: `"CareWatch Admin" <${process.env.ADMIN_EMAIL}>`,
+    from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
     to: process.env.ADMIN_EMAIL,
     subject: "New Seller Registration Pending Approval",
     html: `

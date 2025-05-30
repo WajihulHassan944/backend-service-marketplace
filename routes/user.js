@@ -1,11 +1,12 @@
 import express from "express";
-import { blockUser, deleteUserById, getAllAdmins, getAllBuyers, getAllSellers, getAllUsers, getMyProfile, login, logout, register, unblockUser, verifyUser } from "../controllers/user.js";
+import { blockUser, deleteUserById, getAllAdmins, getAllBuyers, getAllSellers, getAllUsers, getMyProfile, googleLogin, login, logout, register, requestSellerRole, unblockUser, verifyUser } from "../controllers/user.js";
 import { isAuthenticated, isAuthenticatedSuperAdmin } from "../middlewares/auth.js";
 import upload from "../middlewares/upload.js";
 
 const router = express.Router();
 
 router.post('/register', upload.single('profileImage'), register);
+router.post("/google-login", googleLogin);
 router.post("/login", login);
 router.get("/logout", logout);
 router.get("/userdetails", isAuthenticated, getMyProfile);
@@ -17,5 +18,6 @@ router.get("/admins", isAuthenticatedSuperAdmin, getAllAdmins);
 router.put("/:id/block", isAuthenticatedSuperAdmin, blockUser);
 router.put("/:id/unblock", isAuthenticatedSuperAdmin, unblockUser);
 router.get("/verify/:id", verifyUser);
+router.post("/request-seller", isAuthenticated, requestSellerRole);
 
 export default router;

@@ -28,7 +28,7 @@ const schema = new mongoose.Schema({
   },
   role: {
     type: [String],
-    enum: ["buyer", "seller", "admin"], // ⛔ superadmin removed
+    enum: ["buyer", "seller", "admin"],
     default: ["buyer"],
   },
   verified: {
