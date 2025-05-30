@@ -1,10 +1,11 @@
 import express from "express";
 import { blockUser, deleteUserById, getAllAdmins, getAllBuyers, getAllSellers, getAllUsers, getMyProfile, login, logout, register, unblockUser, verifyUser } from "../controllers/user.js";
 import { isAuthenticated, isAuthenticatedSuperAdmin } from "../middlewares/auth.js";
+import upload from "../middlewares/upload.js";
 
 const router = express.Router();
 
-router.post("/register", register);
+router.post('/register', upload.single('profileImage'), register);
 router.post("/login", login);
 router.get("/logout", logout);
 router.get("/userdetails", isAuthenticated, getMyProfile);

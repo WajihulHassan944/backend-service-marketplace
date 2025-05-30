@@ -9,6 +9,10 @@ const schema = new mongoose.Schema({
     type: String,
     required: false,
   },
+   profileUrl: {
+    type: String,
+    required: false,
+  },
   email: {
     type: String,
     required: true,

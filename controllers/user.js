@@ -3,6 +3,9 @@ import bcrypt from "bcrypt";
 import { sendCookie } from "../utils/features.js";
 import ErrorHandler from "../middlewares/error.js";
 import nodemailer from "nodemailer";
+import cloudinary from "../utils/cloudinary.js";
+import streamifier from "streamifier";
+
 export const blockUser = async (req, res, next) => {
   try {
     const user = await User.findByIdAndUpdate(
@@ -156,6 +159,7 @@ export const login = async (req, res, next) => {
       _id: user._id,
       firstName: user.firstName,
       lastName: user.lastName,
+      profileUrl: user.profileUrl,
       email: user.email,
       country: user.country,
       role: user.role,
@@ -197,16 +201,27 @@ export const register = async (req, res, next) => {
 
     let user = await User.findOne({ email });
     if (user) return next(new ErrorHandler("User Already Exists", 400));
-
-    if (role === "superadmin") {
-      return next(new ErrorHandler("Registration as 'superadmin' is not allowed", 403));
-    }
+    if (role === "superadmin") return next(new ErrorHandler("Registration as 'superadmin' is not allowed", 403));
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const roles = ["buyer"];
-    if (role && typeof role === "string" && role !== "buyer") {
-      roles.push(role);
+    if (role && typeof role === "string" && role !== "buyer") roles.push(role);
+
+    let profileUrl = "";
+    if (req.file) {
+      const bufferStream = streamifier.createReadStream(req.file.buffer);
+      const cloudinaryUpload = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: "user_profiles" },
+          (error, result) => {
+            if (result) resolve(result);
+            else reject(error);
+          }
+        );
+        bufferStream.pipe(stream);
+      });
+      profileUrl = cloudinaryUpload.secure_url;
     }
 
     user = await User.create({
@@ -216,12 +231,10 @@ export const register = async (req, res, next) => {
       password: hashedPassword,
       country,
       role: roles,
+      profileUrl,
     });
 
-    // ✅ Send email to admin if user registered as seller
-    if (roles.includes("seller")) {
-      await sendSellerApprovalEmail(user);
-    }
+    if (roles.includes("seller")) await sendSellerApprovalEmail(user);
 
     res.status(201).json({
       success: true,
@@ -235,6 +248,7 @@ export const register = async (req, res, next) => {
         role: user.role,
         verified: user.verified,
         createdAt: user.createdAt,
+        profileUrl: user.profileUrl,
       },
     });
 
@@ -252,7 +266,7 @@ const sendSellerApprovalEmail = async (user) => {
     },
   });
 
-  const approvalLink = `${process.env.BACKEND_URL}/api/users/verify/${user._id}`;
+  const approvalLink = `https://backend-service-marketplace.vercel.app/api/users/verify/${user._id}`;
 
   const mailOptions = {
     from: `"CareWatch Admin" <${process.env.ADMIN_EMAIL}>`,
