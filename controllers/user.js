@@ -81,10 +81,11 @@ export const googleRegister = async (req, res, next) => {
 
     sendCookie(user, res, `Welcome ${user.firstName}`, 201);
 
-  } catch (error) {
-    console.error("Google Register Error:", error.message);
-    next(new ErrorHandler("Google Registration Failed", 500));
-  }
+ } catch (error) {
+  console.error("Google Register Error:", error); // full object
+  next(new ErrorHandler("Google Registration Failed", 500));
+}
+
 };
 
 // For returning users (login)
