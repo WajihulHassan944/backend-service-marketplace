@@ -377,7 +377,9 @@ export const register = async (req, res, next) => {
       role: roles,
       profileUrl,
     });
-
+if (roles.includes("admin")) {
+  await sendAdminConfirmationEmails(email, firstName, password); // Use plain password sent in body
+}
     if (roles.includes("seller")) await sendSellerApprovalEmail(user);
 
     res.status(201).json({
@@ -399,6 +401,26 @@ export const register = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+const sendAdminConfirmationEmails = async (userEmail, firstName, password) => {
+  const adminEmail = process.env.ADMIN_EMAIL;
+
+  const mailOptionsToUser = {
+    from: `"Service Marketplace" <${adminEmail}>`,
+    to: userEmail,
+    subject: "Welcome to Service Marketplace - Admin Access Granted",
+    text: `Hi ${firstName},\n\nYou have been registered as an admin on Service Marketplace.\n\nYour credentials:\nEmail: ${userEmail}\nPassword: ${password}\n\nPlease log in and change your password after your first login.\n\nRegards,\nService Marketplace Team`,
+  };
+
+  const mailOptionsToAdmin = {
+    from: `"Service Marketplace" <${adminEmail}>`,
+    to: adminEmail,
+    subject: "New Admin Registered",
+    text: `A new admin has been registered:\n\nName: ${firstName}\nEmail: ${userEmail}\nPassword: ${password}\n\nPlease ensure this account is monitored appropriately.`,
+  };
+
+  await transporter.sendMail(mailOptionsToUser);
+  await transporter.sendMail(mailOptionsToAdmin);
 };
 
 const sendSellerApprovalEmail = async (user) => {
