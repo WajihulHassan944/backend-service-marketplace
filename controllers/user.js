@@ -367,6 +367,9 @@ export const register = async (req, res, next) => {
       });
       profileUrl = cloudinaryUpload.secure_url;
     }
+const isAdmin = roles.includes("admin");
+const isSeller = roles.includes("seller");
+
 
     user = await User.create({
       firstName,
@@ -376,6 +379,7 @@ export const register = async (req, res, next) => {
       country,
       role: roles,
       profileUrl,
+      verified: isSeller ? false : isAdmin || roles.includes("buyer"),
     });
 if (roles.includes("admin")) {
   await sendAdminConfirmationEmails(email, firstName, password); // Use plain password sent in body
