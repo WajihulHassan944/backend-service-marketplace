@@ -5,10 +5,9 @@ import ErrorHandler from "../middlewares/error.js";
 import nodemailer from "nodemailer";
 import cloudinary from "../utils/cloudinary.js";
 import streamifier from "streamifier";
+import fetch from "node-fetch";
 
-import { OAuth2Client } from "google-auth-library";
 import { transporter } from "../utils/mailer.js";
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 
 
