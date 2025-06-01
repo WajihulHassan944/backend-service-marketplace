@@ -486,17 +486,35 @@ export const getMyProfile = (req, res) => {
     user: req.user,
   });
 };
-
 export const logout = (req, res) => {
+  const nodeEnv = process.env.NODE_ENV;
+  const sameSite = nodeEnv === "development" ? "lax" : "none";
+  const secure = nodeEnv === "development" ? false : true;
+  const currentToken = req.cookies?.token;
+
+  console.log("=== Logout Debug Info ===");
+  console.log("NODE_ENV:", nodeEnv);
+  console.log("SameSite:", sameSite);
+  console.log("Secure:", secure);
+  console.log("Current token cookie (if any):", currentToken);
+
   res
     .status(200)
     .cookie("token", "", {
       expires: new Date(Date.now()),
-      sameSite: process.env.NODE_ENV === "Develpment" ? "lax" : "none",
-      secure: process.env.NODE_ENV === "Develpment" ? false : true,
+      sameSite,
+      secure,
+      httpOnly: true,
     })
     .json({
       success: true,
       user: req.user,
+      message: "Token cleared on logout",
+      debug: {
+        NODE_ENV: nodeEnv,
+        sameSite,
+        secure,
+        receivedToken: currentToken,
+      },
     });
 };
