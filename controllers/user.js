@@ -7,69 +7,111 @@ import cloudinary from "../utils/cloudinary.js";
 import streamifier from "streamifier";
 
 import { OAuth2Client } from "google-auth-library";
+import { transporter } from "../utils/mailer.js";
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+
+
+// Util to fetch user info from Google
+const fetchGoogleProfile = async (accessToken) => {
+  const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error("Failed to fetch user info from Google");
+  }
+
+  return await res.json();
+};
+
+// For new user signup
+export const googleRegister = async (req, res, next) => {
+  const { token } = req.body;
+
+  try {
+    const profile = await fetchGoogleProfile(token);
+    const { name, email, picture } = profile;
+
+    let user = await User.findOne({ email });
+
+    if (user) {
+      return next(new ErrorHandler("User already exists. Please login.", 400));
+    }
+
+    const [firstName, lastName = ""] = name.split(" ");
+
+    user = await User.create({
+      firstName,
+      lastName,
+      email,
+      profileUrl: picture,
+      verified: true,
+      isNotificationsEnabled: true,
+      isSubscribed: true,
+      isAgreed: true,
+    });
+
+    // Send welcome email to user
+    await transporter.sendMail({
+      from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
+      to: user.email,
+      subject: "Welcome to Service Marketplace!",
+      html: `
+        <h2>Welcome ${user.firstName}!</h2>
+        <p>Thanks for signing up using Google. Start exploring our services today.</p>
+      `,
+    });
+
+    // Notify admin of new signup
+    await transporter.sendMail({
+      from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
+      to: process.env.ADMIN_EMAIL,
+      subject: "New Google Signup Notification",
+      html: `
+        <p>A new user signed up via Google:</p>
+        <ul>
+          <li>Name: ${user.firstName} ${user.lastName}</li>
+          <li>Email: ${user.email}</li>
+        </ul>
+      `,
+    });
+
+    sendCookie(user, res, `Welcome ${user.firstName}`, 201);
+
+  } catch (error) {
+    console.error("Google Register Error:", error.message);
+    next(new ErrorHandler("Google Registration Failed", 500));
+  }
+};
+
+// For returning users (login)
 export const googleLogin = async (req, res, next) => {
   const { token } = req.body;
 
   try {
-    const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+    const profile = await fetchGoogleProfile(token);
+    const { email, name, picture } = profile;
 
-    const payload = ticket.getPayload();
-    const { name, email, picture } = payload;
-
-    let user = await User.findOne({ email });
+    const user = await User.findOne({ email });
 
     if (!user) {
-      const [firstName, lastName = ""] = name.split(" ");
-
-      user = await User.create({
-        firstName,
-        lastName,
-        email,
-        profileUrl: picture,
-        verified: true,
-        isNotificationsEnabled: true,
-        isSubscribed: true,
-        isAgreed: true,
-      });
-
-      // Send welcome email to user
-      await transporter.sendMail({
-        from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
-        to: user.email,
-        subject: "Welcome to Service Marketplace!",
-        html: `
-          <h2>Welcome ${user.firstName}!</h2>
-          <p>Thanks for signing up using Google. Start exploring our services today.</p>
-        `,
-      });
-
-      // Notify admin of new signup
-      await transporter.sendMail({
-        from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
-        to: process.env.ADMIN_EMAIL,
-        subject: "New Google Signup Notification",
-        html: `
-          <p>A new user signed up via Google:</p>
-          <ul>
-            <li>Name: ${user.firstName} ${user.lastName}</li>
-            <li>Email: ${user.email}</li>
-          </ul>
-        `,
-      });
+      return next(new ErrorHandler("User not found. Please register.", 404));
     }
 
     sendCookie(user, res, `Welcome back, ${user.firstName}`, 200);
 
   } catch (error) {
-    console.error("Google login error", error);
+    console.error("Google Login Error:", error.message);
     next(new ErrorHandler("Google Login Failed", 500));
   }
 };
+
+
+
+
 export const blockUser = async (req, res, next) => {
   try {
     const user = await User.findByIdAndUpdate(
