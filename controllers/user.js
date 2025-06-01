@@ -87,7 +87,6 @@ export const googleRegister = async (req, res, next) => {
 
 };
 
-// For returning users (login)
 export const googleLogin = async (req, res, next) => {
   const { token } = req.body;
 
@@ -101,14 +100,23 @@ export const googleLogin = async (req, res, next) => {
       return next(new ErrorHandler("User not found. Please register.", 404));
     }
 
-    sendCookie(user, res, `Welcome back, ${user.firstName}`, 200);
+    if (!user.verified || user.blocked) {
+      return next(new ErrorHandler("Account is either not verified or has been blocked.", 403));
+    }
+
+    // Determine top role
+    const roles = user.role || [];
+    const topRole = roles.includes("seller") ? "seller" : "buyer";
+
+    sendCookie(user, res, `Welcome back, ${user.firstName}`, 200, {
+      topRole,
+    });
 
   } catch (error) {
     console.error("Google Login Error:", error.message);
     next(new ErrorHandler("Google Login Failed", 500));
   }
 };
-
 
 
 
