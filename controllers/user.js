@@ -8,8 +8,7 @@ import streamifier from "streamifier";
 import fetch from "node-fetch";
 import jwt from "jsonwebtoken";
 import { transporter } from "../utils/mailer.js";
-
-
+import generateEmailTemplate from "../utils/emailTemplate.js";
 
 const fetchGoogleProfile = async (accessToken) => {
   const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
@@ -52,39 +51,53 @@ export const googleRegister = async (req, res, next) => {
       isAgreed: true,
     });
 
+    // ✅ Generate welcome email using reusable template
+    const welcomeHtml = generateEmailTemplate({
+      firstName: user.firstName,
+      subject: 'Welcome to doTask!',
+      content: `
+        <h2 style="color:#007bff;">Welcome ${user.firstName}!</h2>
+        <p>Thanks for signing up using Google. Start exploring our services today and discover how easy it is to connect with top-rated professionals.</p>
+      `
+    });
+
     // Send welcome email to user
     await transporter.sendMail({
       from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
       to: user.email,
       subject: "Welcome to Service Marketplace!",
-      html: `
-        <h2>Welcome ${user.firstName}!</h2>
-        <p>Thanks for signing up using Google. Start exploring our services today.</p>
-      `,
+      html: welcomeHtml,
     });
 
     // Notify admin of new signup
-    await transporter.sendMail({
-      from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
-      to: process.env.ADMIN_EMAIL,
-      subject: "New Google Signup Notification",
-      html: `
-        <p>A new user signed up via Google:</p>
-        <ul>
-          <li>Name: ${user.firstName} ${user.lastName}</li>
-          <li>Email: ${user.email}</li>
-        </ul>
-      `,
-    });
+   const adminNotificationHtml = generateEmailTemplate({
+  firstName: "Admin",
+  subject: "New Google Signup Notification",
+  content: `
+    <p>A new user signed up via Google:</p>
+    <ul>
+      <li><strong>Name:</strong> ${user.firstName} ${user.lastName}</li>
+      <li><strong>Email:</strong> ${user.email}</li>
+    </ul>
+  `
+});
+
+await transporter.sendMail({
+  from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
+  to: process.env.ADMIN_EMAIL,
+  subject: "New Google Signup Notification",
+  html: adminNotificationHtml,
+});
+
 
     sendCookie(user, res, `Welcome ${user.firstName}`, 201);
 
- } catch (error) {
-  console.error("Google Register Error:", error); // full object
-  next(new ErrorHandler("Google Registration Failed", 500));
-}
-
+  } catch (error) {
+    console.error("Google Register Error:", error);
+    next(new ErrorHandler("Google Registration Failed", 500));
+  }
 };
+
 
 export const googleLogin = async (req, res, next) => {
   const { token } = req.body;
@@ -484,7 +497,6 @@ export const verifyEmail = async (req, res, next) => {
 };
 const sendAdminConfirmationEmails = async (userEmail, firstName, password) => {
   const adminEmail = process.env.ADMIN_EMAIL;
-
   const logoUrl = "https://res.cloudinary.com/dqi6vk2vn/image/upload/v1748849463/qzkvr0x1uwstambemqld.png";
   const siteUrl = "https://dotask-service-marketplace.vercel.app/";
 
@@ -518,22 +530,21 @@ const sendAdminConfirmationEmails = async (userEmail, firstName, password) => {
 
         <hr style="margin:40px 0;" />
 
-     <div style="text-align:center; display:flex; flex-direction:column; justify-content:center; align-items:center; width:100%;">
-  <img src="${logoUrl}" alt="Logo" style="width:60px;height:60px;border-radius:50%;" />
-  <p style="margin:10px 0 20px;">doTask Service Marketplace</p>
-  <div style="display:flex; justify-content:center; gap:15px; align-items:center;">
-    <a href="#" style="width:35px;height:35px;border:1px solid #ccc;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">
-      <img src="https://img.icons8.com/ios-filled/20/000000/facebook-new.png" alt="Facebook" style="width:20px;" />
-    </a>
-    <a href="#" style="width:35px;height:35px;border:1px solid #ccc;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">
-      <img src="https://img.icons8.com/ios-filled/20/000000/twitter.png" alt="Twitter" style="width:20px;" />
-    </a>
-    <a href="#" style="width:35px;height:35px;border:1px solid #ccc;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">
-      <img src="https://img.icons8.com/ios-filled/20/000000/linkedin.png" alt="LinkedIn" style="width:20px;" />
-    </a>
-  </div>
-</div>
-
+       <div style="text-align:center;">
+          <img src="${logoUrl}" alt="Logo" style="width:60px;height:60px;border-radius:50%;" />
+          <p style="margin:10px 0 20px;">doTask Service Marketplace</p>
+          <div style="display:flex;justify-content:center;gap:15px;">
+            <a href="#" style="width:35px;height:35px;border:1px solid #ccc;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">
+              <img src="https://img.icons8.com/ios-filled/20/000000/facebook-new.png" alt="Facebook" style="width:100%; object-fit:contain;" />
+            </a>
+            <a href="#" style="width:35px;height:35px;border:1px solid #ccc;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">
+              <img src="https://img.icons8.com/ios-filled/20/000000/twitter.png" alt="Twitter" style="width:100%; object-fit:contain;" />
+            </a>
+            <a href="#" style="width:35px;height:35px;border:1px solid #ccc;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">
+              <img src="https://img.icons8.com/ios-filled/20/000000/linkedin.png" alt="LinkedIn" style="width:100%; object-fit:contain;" />
+            </a>
+          </div>
+        </div>
       </div>
     `
   };
