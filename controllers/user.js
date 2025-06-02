@@ -395,23 +395,28 @@ export const register = async (req, res, next) => {
       verified: isSeller ? false : isAdmin || false, // Don't verify buyers here
     });
 
+    // Buyer Email Verification
     if (isBuyer) {
       const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
-
       const verificationLink = `https://backend-service-marketplace.vercel.app/api/users/verify-email?token=${token}`;
 
       await transporter.sendMail({
         from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
         to: email,
         subject: "Verify Your Email",
-        html: `
-          <div style="font-family:sans-serif;padding:20px;background:#f9f9f9">
-            <h2 style="color:#333;">Hello ${firstName},</h2>
-            <p>Thanks for registering as a buyer. Please verify your email by clicking the button below:</p>
-            <a href="${verificationLink}" style="padding:10px 20px;background:#4CAF50;color:white;border-radius:5px;text-decoration:none;">Verify Email</a>
-            <p style="margin-top:20px;">If you did not sign up, please ignore this email.</p>
-          </div>
-        `
+        html: generateEmailTemplate({
+          firstName,
+          subject: "Email Verification",
+          content: `
+            <p>Thanks for registering as a <strong>buyer</strong> on Service Marketplace. Please verify your email by clicking the button below:</p>
+            <div style="margin:30px 0;text-align:center;">
+              <a href="${verificationLink}" style="padding:12px 25px;background:#4CAF50;color:white;border-radius:5px;text-decoration:none;font-size:16px;">
+                Verify Email
+              </a>
+            </div>
+            <p>If you did not sign up, please ignore this email.</p>
+          `,
+        }),
       });
     }
 
@@ -495,70 +500,61 @@ export const verifyEmail = async (req, res, next) => {
     res.redirect("http://dotask-service-marketplace.vercel.app/?verified=fail");
   }
 };
+
+
 const sendAdminConfirmationEmails = async (userEmail, firstName, password) => {
   const adminEmail = process.env.ADMIN_EMAIL;
-  const logoUrl = "https://res.cloudinary.com/dqi6vk2vn/image/upload/v1748849463/qzkvr0x1uwstambemqld.png";
-  const siteUrl = "https://dotask-service-marketplace.vercel.app/";
 
+  // Email to new admin user
   const mailOptionsToUser = {
     from: `"doTask Service Marketplace" <${adminEmail}>`,
     to: userEmail,
     subject: "Welcome to Service Marketplace - Admin Access Granted",
-    html: `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;border:1px solid #eee;padding:30px;border-radius:10px;">
-        <div style="text-align:center;">
-          <img src="${logoUrl}" alt="Logo" style="width:100px;height:100px;border-radius:50%;margin-bottom:10px;" />
-          <h1 style="margin:0;color:#333;">doTask Service Marketplace</h1>
-        </div>
-
-        <div style="margin-top:30px;color:#333;font-size:16px;line-height:1.6;">
-          <p>Hi <strong>${firstName}</strong>,</p>
-          <p>You have been granted admin access on <strong>doTask Service Marketplace</strong>.</p>
-          <p><strong>Your Credentials:</strong></p>
-          <ul style="padding-left:20px;">
-            <li><strong>Email:</strong> ${userEmail}</li>
-            <li><strong>Password:</strong> ${password}</li>
-          </ul>
-          <p>Please log in and update your password after your first login.</p>
-        </div>
-
-        <div style="margin:40px 0;text-align:center;">
-          <a href="${siteUrl}" style="display:inline-block;background-color:#007bff;color:#fff;text-decoration:none;padding:12px 25px;border-radius:5px;font-size:16px;">
+    html: generateEmailTemplate({
+      firstName,
+      subject: "Admin Access Granted",
+      content: `
+        <p>Hi <strong>${firstName}</strong>,</p>
+        <p>You have been granted admin access on <strong>doTask Service Marketplace</strong>.</p>
+        <p><strong>Your Credentials:</strong></p>
+        <ul style="padding-left:20px;">
+          <li><strong>Email:</strong> ${userEmail}</li>
+          <li><strong>Password:</strong> ${password}</li>
+        </ul>
+        <p>Please log in and update your password after your first login.</p>
+        <div style="text-align:center;margin:30px 0;">
+          <a href="https://dotask-service-marketplace.vercel.app/" style="display:inline-block;background-color:#007bff;color:#fff;text-decoration:none;padding:12px 25px;border-radius:5px;font-size:16px;">
             Go to doTask Marketplace
           </a>
         </div>
-
-        <hr style="margin:40px 0;" />
-
-       <div style="text-align:center;">
-          <img src="${logoUrl}" alt="Logo" style="width:60px;height:60px;border-radius:50%;" />
-          <p style="margin:10px 0 20px;">doTask Service Marketplace</p>
-          <div style="display:flex;justify-content:center;gap:15px;">
-            <a href="#" style="width:35px;height:35px;border:1px solid #ccc;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">
-              <img src="https://img.icons8.com/ios-filled/20/000000/facebook-new.png" alt="Facebook" style="width:100%; object-fit:contain;" />
-            </a>
-            <a href="#" style="width:35px;height:35px;border:1px solid #ccc;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">
-              <img src="https://img.icons8.com/ios-filled/20/000000/twitter.png" alt="Twitter" style="width:100%; object-fit:contain;" />
-            </a>
-            <a href="#" style="width:35px;height:35px;border:1px solid #ccc;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">
-              <img src="https://img.icons8.com/ios-filled/20/000000/linkedin.png" alt="LinkedIn" style="width:100%; object-fit:contain;" />
-            </a>
-          </div>
-        </div>
-      </div>
-    `
+      `,
+    }),
   };
 
+  // Email to admin
   const mailOptionsToAdmin = {
     from: `"doTask Service Marketplace" <${adminEmail}>`,
     to: adminEmail,
     subject: "New Admin Registered",
-    text: `A new admin has been registered:\n\nName: ${firstName}\nEmail: ${userEmail}\nPassword: ${password}\n\nPlease ensure this account is monitored appropriately.`,
+    html: generateEmailTemplate({
+      firstName: "Admin",
+      subject: "New Admin Registered",
+      content: `
+        <p>A new admin has been registered on <strong>doTask Service Marketplace</strong>:</p>
+        <ul style="padding-left:20px;">
+          <li><strong>Name:</strong> ${firstName}</li>
+          <li><strong>Email:</strong> ${userEmail}</li>
+          <li><strong>Password:</strong> ${password}</li>
+        </ul>
+        <p>Please ensure this account is monitored appropriately.</p>
+      `,
+    }),
   };
 
   await transporter.sendMail(mailOptionsToUser);
   await transporter.sendMail(mailOptionsToAdmin);
 };
+
 
 const sendSellerApprovalEmail = async (user) => {
   const transporter = nodemailer.createTransport({
@@ -575,15 +571,20 @@ const sendSellerApprovalEmail = async (user) => {
     from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
     to: process.env.ADMIN_EMAIL,
     subject: "New Seller Registration Pending Approval",
-    html: `
-      <h2>New Seller Registration</h2>
-      <p><strong>${user.firstName} ${user.lastName}</strong> has registered as a <strong>seller</strong>.</p>
-      <p>Email: ${user.email}</p>
-      <p>Country: ${user.country}</p>
-      <a href="${approvalLink}" style="display: inline-block; padding: 10px 15px; background-color: #28a745; color: white; text-decoration: none; border-radius: 5px; cursor:pointer;">
-        Approve Seller
-      </a>
-    `,
+    html: generateEmailTemplate({
+      firstName: "Admin",
+      subject: "New Seller Registration",
+      content: `
+        <p><strong>${user.firstName} ${user.lastName}</strong> has registered as a <strong>seller</strong>.</p>
+        <p><strong>Email:</strong> ${user.email}</p>
+        <p><strong>Country:</strong> ${user.country}</p>
+        <div style="margin:30px 0;text-align:center;">
+          <a href="${approvalLink}" style="display:inline-block;padding:12px 25px;background-color:#28a745;color:#fff;text-decoration:none;border-radius:5px;font-size:16px;">
+            Approve Seller
+          </a>
+        </div>
+      `,
+    }),
   };
 
   await transporter.sendMail(mailOptions);
@@ -617,12 +618,19 @@ export const verifyUser = async (req, res, next) => {
       from: `"Service Marketplace Team" <${process.env.ADMIN_EMAIL}>`,
       to: user.email,
       subject: "🎉 Your Seller Account Has Been Approved!",
-      html: `
-        <h2>Congratulations ${user.firstName}!</h2>
-        <p>Great news — your seller account has been successfully approved on <strong>Service Marketplace</strong>.</p>
-        <p>You can now log in and start offering your services to buyers.</p>
-        <a href="https://dotask-service-marketplace.vercel.app" style="display:inline-block; padding:10px 20px; background-color:#007bff; color:#fff; text-decoration:none; border-radius:5px; margin-top:10px;">Visit Marketplace</a>
-      `,
+      html: generateEmailTemplate({
+        firstName: user.firstName,
+        subject: "Seller Account Approved",
+        content: `
+          <p>Great news — your seller account has been successfully approved on <strong>doTask Service Marketplace</strong>.</p>
+          <p>You can now log in and start offering your services to buyers.</p>
+          <div style="margin:30px 0;text-align:center;">
+            <a href="https://dotask-service-marketplace.vercel.app" style="display:inline-block; padding:12px 25px; background-color:#007bff; color:white; text-decoration:none; border-radius:5px; font-size:16px;">
+              Visit Marketplace
+            </a>
+          </div>
+        `,
+      }),
     };
 
     await transporter.sendMail(mailOptions);

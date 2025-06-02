@@ -28,17 +28,7 @@ const generateEmailTemplate = ({
       <div style="text-align:center;">
         <img src="${logoUrl}" alt="Logo" style="width:60px;height:60px;border-radius:50%;" />
         <p style="margin:10px 0 20px;">doTask Service Marketplace</p>
-        <div style="display:flex;justify-content:center;gap:15px;">
-          <a href="#" style="width:35px;height:35px;border:1px solid #ccc;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">
-            <img src="https://img.icons8.com/ios-filled/20/000000/facebook-new.png" alt="Facebook" style="width:100%; object-fit:contain;" />
-          </a>
-          <a href="#" style="width:35px;height:35px;border:1px solid #ccc;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">
-            <img src="https://img.icons8.com/ios-filled/20/000000/twitter.png" alt="Twitter" style="width:100%; object-fit:contain;" />
-          </a>
-          <a href="#" style="width:35px;height:35px;border:1px solid #ccc;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;">
-            <img src="https://img.icons8.com/ios-filled/20/000000/linkedin.png" alt="LinkedIn" style="width:100%; object-fit:contain;" />
-          </a>
-        </div>
+   
       </div>
     </div>
   `;
