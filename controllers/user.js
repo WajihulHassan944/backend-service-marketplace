@@ -100,8 +100,8 @@ export const googleLogin = async (req, res, next) => {
       return next(new ErrorHandler("User not found. Please register.", 404));
     }
 
-    if (!user.verified || user.blocked) {
-      return next(new ErrorHandler("Account is either not verified or has been blocked.", 403));
+    if (user.blocked) {
+      return next(new ErrorHandler("Account has been blocked.", 403));
     }
 
     // Determine top role
@@ -255,13 +255,7 @@ export const login = async (req, res, next) => {
       });
     }
 
-    // Check if user is not verified
-    if (!user.verified) {
-      return res.status(403).json({
-        success: false,
-        message: "Account not verified. Please wait for admin approval.",
-      });
-    }
+  
 
     const isMatch = await bcrypt.compare(password, user.password);
 
