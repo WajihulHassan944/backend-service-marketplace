@@ -259,7 +259,7 @@ export const login = async (req, res, next) => {
     if (!user.verified) {
       return res.status(403).json({
         success: false,
-        message: "Account not verified. Please wait for admin approval.",
+        message: "Account not verified.",
       });
     }
 
@@ -534,6 +534,7 @@ const sendSellerApprovalEmail = async (user) => {
   await transporter.sendMail(mailOptions);
 };
 
+
 export const verifyUser = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -548,11 +549,35 @@ export const verifyUser = async (req, res, next) => {
       return res.status(404).send("<h2>User not found</h2>");
     }
 
+    // Send confirmation email to seller
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.ADMIN_EMAIL,
+        pass: process.env.ADMIN_EMAIL_PASS,
+      },
+    });
+
+    const mailOptions = {
+      from: `"Service Marketplace Team" <${process.env.ADMIN_EMAIL}>`,
+      to: user.email,
+      subject: "🎉 Your Seller Account Has Been Approved!",
+      html: `
+        <h2>Congratulations ${user.firstName}!</h2>
+        <p>Great news — your seller account has been successfully approved on <strong>Service Marketplace</strong>.</p>
+        <p>You can now log in and start offering your services to buyers.</p>
+        <a href="https://dotask-service-marketplace.vercel.app" style="display:inline-block; padding:10px 20px; background-color:#007bff; color:#fff; text-decoration:none; border-radius:5px; margin-top:10px;">Visit Marketplace</a>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+
     res.send(`
       <h2>Seller Approved</h2>
-      <p>The seller <strong>${user.firstName} ${user.lastName}</strong> has been verified successfully.</p>
+      <p>The seller <strong>${user.firstName} ${user.lastName}</strong> has been verified and notified via email.</p>
     `);
   } catch (error) {
+    console.error("Verify Seller Error:", error);
     res.status(500).send("<h2>Something went wrong. Please try again later.</h2>");
   }
 };
