@@ -6,7 +6,7 @@ import nodemailer from "nodemailer";
 import cloudinary from "../utils/cloudinary.js";
 import streamifier from "streamifier";
 import fetch from "node-fetch";
-
+import jwt from "jsonwebtoken";
 import { transporter } from "../utils/mailer.js";
 
 
@@ -100,8 +100,8 @@ export const googleLogin = async (req, res, next) => {
       return next(new ErrorHandler("User not found. Please register.", 404));
     }
 
-    if (user.blocked) {
-      return next(new ErrorHandler("Account has been blocked.", 403));
+    if (!user.verified || user.blocked) {
+      return next(new ErrorHandler("Account is either not verified or has been blocked.", 403));
     }
 
     // Determine top role
@@ -255,7 +255,13 @@ export const login = async (req, res, next) => {
       });
     }
 
-  
+    // Check if user is not verified
+    if (!user.verified) {
+      return res.status(403).json({
+        success: false,
+        message: "Account not verified. Please wait for admin approval.",
+      });
+    }
 
     const isMatch = await bcrypt.compare(password, user.password);
 
@@ -361,9 +367,10 @@ export const register = async (req, res, next) => {
       });
       profileUrl = cloudinaryUpload.secure_url;
     }
-const isAdmin = roles.includes("admin");
-const isSeller = roles.includes("seller");
 
+    const isAdmin = roles.includes("admin");
+    const isSeller = roles.includes("seller");
+    const isBuyer = roles.includes("buyer");
 
     user = await User.create({
       firstName,
@@ -373,26 +380,50 @@ const isSeller = roles.includes("seller");
       country,
       role: roles,
       profileUrl,
-      verified: isSeller ? false : isAdmin || roles.includes("buyer"),
+      verified: isSeller ? false : isAdmin || false, // Don't verify buyers here
     });
-if (roles.includes("admin")) {
-  await sendAdminConfirmationEmails(email, firstName, password); // Use plain password sent in body
-}
-    if (roles.includes("seller")) await sendSellerApprovalEmail(user);
+
+    if (isBuyer) {
+      const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
+
+      const verificationLink = `https://backend-service-marketplace.vercel.app/api/users/verify-email?token=${token}`;
+
+      await transporter.sendMail({
+        from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        to: email,
+        subject: "Verify Your Email",
+        html: `
+          <div style="font-family:sans-serif;padding:20px;background:#f9f9f9">
+            <h2 style="color:#333;">Hello ${firstName},</h2>
+            <p>Thanks for registering as a buyer. Please verify your email by clicking the button below:</p>
+            <a href="${verificationLink}" style="padding:10px 20px;background:#4CAF50;color:white;border-radius:5px;text-decoration:none;">Verify Email</a>
+            <p style="margin-top:20px;">If you did not sign up, please ignore this email.</p>
+          </div>
+        `
+      });
+    }
+
+    if (isAdmin) {
+      await sendAdminConfirmationEmails(email, firstName, password);
+    }
+
+    if (isSeller) {
+      await sendSellerApprovalEmail(user);
+    }
 
     res.status(201).json({
       success: true,
-      message: "Registered Successfully",
+      message: isBuyer ? "Registration successful. Please verify your email." : "Registered Successfully",
       user: {
         _id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        country: user.country,
-        role: user.role,
+        firstName,
+        lastName,
+        email,
+        country,
+        role: roles,
         verified: user.verified,
+        profileUrl,
         createdAt: user.createdAt,
-        profileUrl: user.profileUrl,
       },
     });
 
@@ -400,6 +431,29 @@ if (roles.includes("admin")) {
     next(error);
   }
 };
+
+export const verifyEmail = async (req, res, next) => {
+  try {
+    const { token } = req.query;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const user = await User.findById(decoded.userId);
+    if (!user) return next(new ErrorHandler("Invalid or expired verification link", 400));
+
+    if (user.verified) {
+      return res.redirect("http://dotask-service-marketplace.vercel.app/?verified=already");
+    }
+
+    user.verified = true;
+    await user.save();
+
+    res.redirect("http://dotask-service-marketplace.vercel.app/?verified=success");
+  } catch (error) {
+    console.error(error);
+    res.redirect("http://dotask-service-marketplace.vercel.app/?verified=fail");
+  }
+};
+
 const sendAdminConfirmationEmails = async (userEmail, firstName, password) => {
   const adminEmail = process.env.ADMIN_EMAIL;
 
