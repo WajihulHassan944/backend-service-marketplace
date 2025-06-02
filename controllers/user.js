@@ -432,6 +432,36 @@ export const register = async (req, res, next) => {
   }
 };
 
+export const sellerRequest = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    if (!user.role.includes("seller")) {
+      user.role.push("seller");
+    }
+    await user.save();
+
+    await sendSellerApprovalEmail(user);
+
+    res.status(200).json({
+      success: true,
+      message: "User requested as seller successfully",
+      user: {
+        _id: user._id,
+        email: user.email,
+        role: user.role,
+        sellerStatus: user.sellerStatus,
+      },
+    });
+  } catch (error) {
+    console.error("Approve Seller Error:", error);
+    res.status(500).json({ success: false, message: "Failed to approve seller" });
+  }
+};
+
 export const verifyEmail = async (req, res, next) => {
   try {
     const { token } = req.query;
@@ -510,7 +540,7 @@ export const verifyUser = async (req, res, next) => {
 
     const user = await User.findByIdAndUpdate(
       id,
-      { verified: true },
+      { verified: true, sellerStatus: true },
       { new: true }
     );
 

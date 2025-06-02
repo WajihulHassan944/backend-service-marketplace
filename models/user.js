@@ -31,6 +31,10 @@ const schema = new mongoose.Schema({
     enum: ["buyer", "seller", "admin"],
     default: ["buyer"],
   },
+  sellerStatus: {
+  type: Boolean,
+  default: false,
+},
   verified: {
     type: Boolean,
     default: false,
