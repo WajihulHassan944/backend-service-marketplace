@@ -51,8 +51,7 @@ schema.pre("save", function (next) {
 
   // Allow verified=true if existing role includes superadmin
   if (
-    this.role.includes("superadmin") || // support for existing superadmin
-    (this.role.length === 1 && this.role[0] === "buyer")
+    this.role.includes("superadmin")
   ) {
     this.verified = true;
   } else {
