@@ -11,7 +11,6 @@ import { transporter } from "../utils/mailer.js";
 
 
 
-// Util to fetch user info from Google
 const fetchGoogleProfile = async (accessToken) => {
   const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
     headers: {
