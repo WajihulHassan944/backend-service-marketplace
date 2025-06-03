@@ -351,8 +351,7 @@ export const register = async (req, res, next) => {
       password,
       country,
       role,
-      linkedUrl,
-      speciality,
+      sellerDetails, // Expecting full object from Postman
     } = req.body;
 
     const existingUser = await User.findOne({ email });
@@ -361,11 +360,11 @@ export const register = async (req, res, next) => {
     if (existingUser && role === "seller") {
       const updateData = {};
 
-      if (linkedUrl || speciality) {
+      if (sellerDetails?.linkedUrl || sellerDetails?.speciality) {
         updateData.sellerDetails = {
           ...existingUser.sellerDetails,
-          ...(linkedUrl && { linkedUrl }),
-          ...(speciality && { speciality }),
+          ...(sellerDetails?.linkedUrl && { linkedUrl: sellerDetails.linkedUrl }),
+          ...(sellerDetails?.speciality && { speciality: sellerDetails.speciality }),
         };
       }
 
@@ -376,8 +375,6 @@ export const register = async (req, res, next) => {
       await User.updateOne({ email }, { $set: updateData });
 
       const updatedUser = await User.findOne({ email });
-
-      // Send Seller Approval Email
       await sendSellerApprovalEmail(updatedUser);
 
       return res.status(200).json({
@@ -397,14 +394,16 @@ export const register = async (req, res, next) => {
       });
     }
 
-    // Regular new user flow
+    // Normal new user flow
     if (existingUser) return next(new ErrorHandler("User Already Exists", 400));
     if (role === "superadmin") return next(new ErrorHandler("Registration as 'superadmin' is not allowed", 403));
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const roles = ["buyer"];
-    if (role && typeof role === "string" && role !== "buyer") roles.push(role);
+    // Avoid blindly adding 'buyer' if role is seller
+    const roles = [];
+    if (role && typeof role === "string") roles.push(role);
+    if (!roles.includes("buyer") && role !== "seller") roles.push("buyer");
 
     let profileUrl = "";
     if (req.file) {
@@ -437,10 +436,10 @@ export const register = async (req, res, next) => {
       verified: isSeller ? false : isAdmin || false,
     };
 
-    if (isSeller && (linkedUrl || speciality)) {
+    if (isSeller && sellerDetails) {
       newUserData.sellerDetails = {};
-      if (linkedUrl) newUserData.sellerDetails.linkedUrl = linkedUrl;
-      if (speciality) newUserData.sellerDetails.speciality = speciality;
+      if (sellerDetails.linkedUrl) newUserData.sellerDetails.linkedUrl = sellerDetails.linkedUrl;
+      if (sellerDetails.speciality) newUserData.sellerDetails.speciality = sellerDetails.speciality;
     }
 
     const user = await User.create(newUserData);
@@ -498,6 +497,7 @@ export const register = async (req, res, next) => {
     next(error);
   }
 };
+
 
 
 
