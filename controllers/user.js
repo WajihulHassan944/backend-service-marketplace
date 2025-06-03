@@ -342,8 +342,6 @@ export const requestSellerRole = async (req, res, next) => {
     next(error);
   }
 };
-
-
 export const register = async (req, res, next) => {
   try {
     const {
@@ -353,10 +351,54 @@ export const register = async (req, res, next) => {
       password,
       country,
       role,
+      linkedUrl,
+      speciality,
     } = req.body;
 
-    let user = await User.findOne({ email });
-    if (user) return next(new ErrorHandler("User Already Exists", 400));
+    const existingUser = await User.findOne({ email });
+
+    // Special handling: If user exists and role is 'seller'
+    if (existingUser && role === "seller") {
+      const updateData = {};
+
+      if (linkedUrl || speciality) {
+        updateData.sellerDetails = {
+          ...existingUser.sellerDetails,
+          ...(linkedUrl && { linkedUrl }),
+          ...(speciality && { speciality }),
+        };
+      }
+
+      if (!existingUser.role.includes("seller")) {
+        updateData.role = [...existingUser.role, "seller"];
+      }
+
+      await User.updateOne({ email }, { $set: updateData });
+
+      const updatedUser = await User.findOne({ email });
+
+      // Send Seller Approval Email
+      await sendSellerApprovalEmail(updatedUser);
+
+      return res.status(200).json({
+        success: true,
+        message: "Seller details updated and email sent for approval.",
+        user: {
+          _id: updatedUser._id,
+          firstName: updatedUser.firstName,
+          lastName: updatedUser.lastName,
+          email: updatedUser.email,
+          country: updatedUser.country,
+          role: updatedUser.role,
+          profileUrl: updatedUser.profileUrl,
+          sellerDetails: updatedUser.sellerDetails,
+          createdAt: updatedUser.createdAt,
+        },
+      });
+    }
+
+    // Regular new user flow
+    if (existingUser) return next(new ErrorHandler("User Already Exists", 400));
     if (role === "superadmin") return next(new ErrorHandler("Registration as 'superadmin' is not allowed", 403));
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -384,7 +426,7 @@ export const register = async (req, res, next) => {
     const isSeller = roles.includes("seller");
     const isBuyer = roles.includes("buyer");
 
-    user = await User.create({
+    const newUserData = {
       firstName,
       lastName,
       email,
@@ -392,10 +434,17 @@ export const register = async (req, res, next) => {
       country,
       role: roles,
       profileUrl,
-      verified: isSeller ? false : isAdmin || false, // Don't verify buyers here
-    });
+      verified: isSeller ? false : isAdmin || false,
+    };
 
-    // Buyer Email Verification
+    if (isSeller && (linkedUrl || speciality)) {
+      newUserData.sellerDetails = {};
+      if (linkedUrl) newUserData.sellerDetails.linkedUrl = linkedUrl;
+      if (speciality) newUserData.sellerDetails.speciality = speciality;
+    }
+
+    const user = await User.create(newUserData);
+
     if (isBuyer) {
       const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
       const verificationLink = `https://backend-service-marketplace.vercel.app/api/users/verify-email?token=${token}`;
@@ -441,6 +490,7 @@ export const register = async (req, res, next) => {
         verified: user.verified,
         profileUrl,
         createdAt: user.createdAt,
+        ...(isSeller && user.sellerDetails && { sellerDetails: user.sellerDetails }),
       },
     });
 
@@ -448,6 +498,8 @@ export const register = async (req, res, next) => {
     next(error);
   }
 };
+
+
 
 export const sellerRequest = async (req, res, next) => {
   try {
@@ -504,8 +556,6 @@ export const verifyEmail = async (req, res, next) => {
 
 const sendAdminConfirmationEmails = async (userEmail, firstName, password) => {
   const adminEmail = process.env.ADMIN_EMAIL;
-
-  // Email to new admin user
   const mailOptionsToUser = {
     from: `"doTask Service Marketplace" <${adminEmail}>`,
     to: userEmail,
@@ -567,6 +617,8 @@ const sendSellerApprovalEmail = async (user) => {
 
   const approvalLink = `https://backend-service-marketplace.vercel.app/api/users/verify/${user._id}`;
 
+  const { linkedUrl, speciality } = user.sellerDetails || {};
+
   const mailOptions = {
     from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
     to: process.env.ADMIN_EMAIL,
@@ -578,6 +630,8 @@ const sendSellerApprovalEmail = async (user) => {
         <p><strong>${user.firstName} ${user.lastName}</strong> has registered as a <strong>seller</strong>.</p>
         <p><strong>Email:</strong> ${user.email}</p>
         <p><strong>Country:</strong> ${user.country}</p>
+        ${linkedUrl ? `<p><strong>LinkedIn:</strong> <a href="${linkedUrl}" target="_blank">${linkedUrl}</a></p>` : ""}
+        ${speciality ? `<p><strong>Speciality:</strong> ${speciality}</p>` : ""}
         <div style="margin:30px 0;text-align:center;">
           <a href="${approvalLink}" style="display:inline-block;padding:12px 25px;background-color:#28a745;color:#fff;text-decoration:none;border-radius:5px;font-size:16px;">
             Approve Seller
@@ -605,7 +659,6 @@ export const verifyUser = async (req, res, next) => {
       return res.status(404).send("<h2>User not found</h2>");
     }
 
-    // Send confirmation email to seller
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {

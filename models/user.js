@@ -35,6 +35,16 @@ const schema = new mongoose.Schema({
   type: Boolean,
   default: false,
 },
+ sellerDetails: {
+    linkedUrl: {
+      type: String,
+      required: false,
+    },
+    speciality: {
+      type: String,
+      required: false,
+    },
+  },
   verified: {
     type: Boolean,
     default: false,
@@ -47,22 +57,6 @@ const schema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-});
-
-// Automatically set `verified` status before saving
-schema.pre("save", function (next) {
-  if (!this.isModified("role")) return next();
-
-  // Allow verified=true if existing role includes superadmin
-  if (
-    this.role.includes("superadmin")
-  ) {
-    this.verified = true;
-  } else {
-    this.verified = false;
-  }
-
-  next();
 });
 
 export const User = mongoose.model("User", schema);
