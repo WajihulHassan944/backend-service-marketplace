@@ -342,6 +342,7 @@ export const requestSellerRole = async (req, res, next) => {
     next(error);
   }
 };
+
 export const register = async (req, res, next) => {
   try {
     const {
@@ -401,9 +402,14 @@ export const register = async (req, res, next) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Avoid blindly adding 'buyer' if role is seller
-    const roles = [];
-    if (role && typeof role === "string") roles.push(role);
-    if (!roles.includes("buyer") && role !== "seller") roles.push("buyer");
+  // Ensure "buyer" is always included if role is "seller"
+const roles = [];
+if (role === "seller") {
+  roles.push("buyer", "seller");
+} else if (role && typeof role === "string") {
+  roles.push("buyer", role);
+}
+
 
     let profileUrl = "";
     if (req.file) {
@@ -444,29 +450,30 @@ export const register = async (req, res, next) => {
 
     const user = await User.create(newUserData);
 
-    if (isBuyer) {
-      const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
-      const verificationLink = `https://backend-service-marketplace.vercel.app/api/users/verify-email?token=${token}`;
+   if (isBuyer && !isSeller) {
+  // Send buyer verification email only if not also a seller
+  const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
+  const verificationLink = `https://backend-service-marketplace.vercel.app/api/users/verify-email?token=${token}`;
 
-      await transporter.sendMail({
-        from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
-        to: email,
-        subject: "Verify Your Email",
-        html: generateEmailTemplate({
-          firstName,
-          subject: "Email Verification",
-          content: `
-            <p>Thanks for registering as a <strong>buyer</strong> on Service Marketplace. Please verify your email by clicking the button below:</p>
-            <div style="margin:30px 0;text-align:center;">
-              <a href="${verificationLink}" style="padding:12px 25px;background:#4CAF50;color:white;border-radius:5px;text-decoration:none;font-size:16px;">
-                Verify Email
-              </a>
-            </div>
-            <p>If you did not sign up, please ignore this email.</p>
-          `,
-        }),
-      });
-    }
+  await transporter.sendMail({
+    from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+    to: email,
+    subject: "Verify Your Email",
+    html: generateEmailTemplate({
+      firstName,
+      subject: "Email Verification",
+      content: `
+        <p>Thanks for registering as a <strong>buyer</strong> on Service Marketplace. Please verify your email by clicking the button below:</p>
+        <div style="margin:30px 0;text-align:center;">
+          <a href="${verificationLink}" style="padding:12px 25px;background:#4CAF50;color:white;border-radius:5px;text-decoration:none;font-size:16px;">
+            Verify Email
+          </a>
+        </div>
+        <p>If you did not sign up, please ignore this email.</p>
+      `,
+    }),
+  });
+}
 
     if (isAdmin) {
       await sendAdminConfirmationEmails(email, firstName, password);
