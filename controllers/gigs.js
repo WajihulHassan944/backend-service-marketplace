@@ -8,7 +8,6 @@ cloudinary.config({
   api_key: "698647745175389",
   api_secret: "fZRW13reHqz_TkvH9jMAH7azLZ4",
 });
-
 const uploadToCloudinary = (buffer, folder = "gig_images", resource_type = "image") => {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -16,7 +15,17 @@ const uploadToCloudinary = (buffer, folder = "gig_images", resource_type = "imag
       (error, result) => {
         if (result) {
           console.log(`✅ Uploaded to Cloudinary (${resource_type}):`, result.secure_url);
-          resolve(result.secure_url);
+          if (resource_type === "raw") {
+            // Return a better constructed PDF URL with format
+            const customPdfUrl = cloudinary.url(result.public_id, {
+              resource_type: "raw",
+              secure: true,
+              format: "pdf",
+            });
+            resolve(customPdfUrl);
+          } else {
+            resolve(result.secure_url);
+          }
         } else {
           console.error(`❌ Cloudinary upload error (${resource_type}):`, error);
           reject(error);
