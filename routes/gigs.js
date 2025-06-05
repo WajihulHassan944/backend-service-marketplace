@@ -7,7 +7,7 @@ const router = express.Router();
 
 router.post(
   "/create",
-  isAuthenticated,
+ 
   gigUpload.fields([
     { name: "gigImages", maxCount: 3 },
     { name: "gigPdf", maxCount: 1 },
