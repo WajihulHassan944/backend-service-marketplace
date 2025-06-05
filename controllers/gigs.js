@@ -1,14 +1,8 @@
-import { v2 as cloudinary } from "cloudinary";
 import streamifier from "streamifier";
 import { Gig } from "../models/gigs.js";
 import ErrorHandler from "../middlewares/error.js";
 import { v4 as uuidv4 } from "uuid";
-cloudinary.config({
-  cloud_name: "dxhvhuclm",
-  api_key: "698647745175389",
-  api_secret: "fZRW13reHqz_TkvH9jMAH7azLZ4",
-});
-
+import cloudinary from "../utils/cloudinary.js";
 const uploadToCloudinary = (buffer, folder = "gig_images", resource_type = "image") => {
   return new Promise((resolve, reject) => {
     const uniqueId = uuidv4();
