@@ -9,7 +9,6 @@ cloudinary.config({
   api_secret: "fZRW13reHqz_TkvH9jMAH7azLZ4",
 });
 
-
 const uploadToCloudinary = (buffer, folder = "gig_images", resource_type = "image") => {
   return new Promise((resolve, reject) => {
     const uniqueId = uuidv4();
@@ -20,15 +19,17 @@ const uploadToCloudinary = (buffer, folder = "gig_images", resource_type = "imag
       {
         folder,
         resource_type,
+        type: "upload", // 🔒 Ensure public access to raw files
         public_id,
         use_filename: true,
         unique_filename: false,
         overwrite: true,
+        format: isPdf ? "pdf" : undefined,
       },
       (error, result) => {
         if (result) {
           console.log(`✅ Uploaded to Cloudinary (${resource_type}):`, result.secure_url);
-          resolve(result.secure_url); // This will now include .pdf if set
+          resolve(result.secure_url); // Will include `.pdf` in the URL if applicable
         } else {
           console.error(`❌ Cloudinary upload error (${resource_type}):`, error);
           reject(error);
