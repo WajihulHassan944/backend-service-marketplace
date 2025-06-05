@@ -2,27 +2,40 @@ import { v2 as cloudinary } from "cloudinary";
 import streamifier from "streamifier";
 import { Gig } from "../models/gigs.js";
 import ErrorHandler from "../middlewares/error.js";
-
+import { v4 as uuidv4 } from "uuid";
 cloudinary.config({
   cloud_name: "dxhvhuclm",
   api_key: "698647745175389",
   api_secret: "fZRW13reHqz_TkvH9jMAH7azLZ4",
 });
 
+
 const uploadToCloudinary = (buffer, folder = "gig_images", resource_type = "image") => {
   return new Promise((resolve, reject) => {
+    const uniqueId = uuidv4();
+    const isPdf = resource_type === "raw";
+    const public_id = `${folder}/${uniqueId}${isPdf ? ".pdf" : ""}`;
+
     const stream = cloudinary.uploader.upload_stream(
-      { folder, resource_type },
+      {
+        folder,
+        resource_type,
+        public_id,
+        use_filename: true,
+        unique_filename: false,
+        overwrite: true,
+      },
       (error, result) => {
         if (result) {
           console.log(`✅ Uploaded to Cloudinary (${resource_type}):`, result.secure_url);
-          resolve(result.secure_url);  // 🔥 USE ONLY THIS LINE — works for both images and PDFs
+          resolve(result.secure_url); // This will now include .pdf if set
         } else {
           console.error(`❌ Cloudinary upload error (${resource_type}):`, error);
           reject(error);
         }
       }
     );
+
     streamifier.createReadStream(buffer).pipe(stream);
   });
 };
