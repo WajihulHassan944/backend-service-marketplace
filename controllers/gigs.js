@@ -502,12 +502,15 @@ export const changeGigStatus = async (req, res, next) => {
         content,
       });
 
-      await transporter.sendMail({
-        from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
-        to: user.email,
-        subject,
-        html,
-      });
+    transporter.sendMail({
+  from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+  to: user.email,
+  subject,
+  html,
+}).catch(err => {
+  console.error("❌ Email sending failed:", err);
+});
+
     }
 
     const message =
