@@ -456,12 +456,17 @@ export const getAllRejectedGigs = async (req, res, next) => {
 
 export const changeGigStatus = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const { status } = req.body;
-
+    const { action, id } = req.params;
     const validStatuses = ["active", "pending", "rejected"];
-    if (!validStatuses.includes(status)) {
-      return res.status(400).send(renderHtml("Invalid status provided", "danger"));
+    const statusMap = {
+      approve: "active",
+      reject: "rejected",
+      pending: "pending",
+    };
+
+    const status = statusMap[action];
+    if (!status) {
+      return res.status(400).send(renderHtml("Invalid action provided", "danger"));
     }
 
     const gig = await Gig.findById(id);
@@ -469,14 +474,10 @@ export const changeGigStatus = async (req, res, next) => {
       return res.status(404).send(renderHtml("Gig not found", "danger"));
     }
 
-    // Update gig status
     gig.status = status;
     await gig.save();
 
-    // Find the user who created the gig
     const user = await User.findById(gig.userId);
-
-    // Email the user about the status change
     if (user?.email) {
       const subject =
         status === "active"
@@ -488,11 +489,10 @@ export const changeGigStatus = async (req, res, next) => {
       const content =
         status === "active"
           ? `<p>Congratulations <strong>${user.firstName}</strong>! 🎉</p>
-             <p>Your gig titled <strong>${gig.gigTitle}</strong> has been <span style="color:green;"><strong>approved</strong></span> by our admin team. You can now start receiving orders.</p>`
+             <p>Your gig titled <strong>${gig.gigTitle}</strong> has been <span style="color:green;"><strong>approved</strong></span>.</p>`
           : status === "rejected"
           ? `<p>Dear <strong>${user.firstName}</strong>,</p>
-             <p>Unfortunately, your gig titled <strong>${gig.gigTitle}</strong> was <span style="color:red;"><strong>rejected</strong></span>.</p>
-             <p>Please review our community guidelines and try again with appropriate modifications.</p>`
+             <p>Your gig titled <strong>${gig.gigTitle}</strong> was <span style="color:red;"><strong>rejected</strong></span>.</p>`
           : `<p>Dear <strong>${user.firstName}</strong>,</p>
              <p>The status of your gig titled <strong>${gig.gigTitle}</strong> has been updated to: <strong>${status}</strong>.</p>`;
 
@@ -510,29 +510,17 @@ export const changeGigStatus = async (req, res, next) => {
       });
     }
 
-    // If it's an admin clicking directly from the email (PATCH triggered via browser)
-    if (req.headers["content-type"] !== "application/json") {
-      const message =
-        status === "active"
-          ? "Gig approved successfully!"
-          : status === "rejected"
-          ? "Gig rejected successfully."
-          : "Gig status updated.";
-      return res.status(200).send(renderHtml(message, "success"));
-    }
+    const message =
+      status === "active"
+        ? "Gig approved successfully!"
+        : status === "rejected"
+        ? "Gig rejected successfully."
+        : "Gig status set to pending.";
 
-    // Otherwise, send JSON for API call
-    return res.status(200).json({
-      success: true,
-      message: `Gig status updated to ${status}`,
-      gig,
-    });
+    return res.status(200).send(renderHtml(message, "success"));
   } catch (error) {
     console.error("❌ Error in changeGigStatus:", error);
-    if (req.headers["content-type"] !== "application/json") {
-      return res.status(500).send(renderHtml("Internal server error", "danger"));
-    }
-    next(error);
+    return res.status(500).send(renderHtml("Internal server error", "danger"));
   }
 };
 

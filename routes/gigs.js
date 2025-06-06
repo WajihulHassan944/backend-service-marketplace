@@ -51,23 +51,6 @@ router.get("/pending", getAllPendingGigs);
 
 router.get("/rejected", getAllRejectedGigs);
 
-router.patch("/status/:id", changeGigStatus);
-
-// Approve gig via GET
-router.get("/status/approve/:id", async (req, res, next) => {
-  req.body.status = "active"; // set status manually
-  req.headers["content-type"] = ""; // make sure HTML response is returned
-  req.params.id = req.params.id;
-  changeGigStatus(req, res, next);
-});
-
-// Reject gig via GET
-router.get("/status/reject/:id", async (req, res, next) => {
-  req.body.status = "rejected"; // set status manually
-  req.headers["content-type"] = ""; // make sure HTML response is returned
-  req.params.id = req.params.id;
-  changeGigStatus(req, res, next);
-});
-
+router.get("/status/:action/:id", changeGigStatus);
 
 export default router;
