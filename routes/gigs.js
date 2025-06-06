@@ -2,9 +2,13 @@ import express from "express";
 import { isAuthenticated } from "../middlewares/auth.js";
 import gigUpload from "../middlewares/gigUpload.js";
 import {
+  changeGigStatus,
   createGig,
   deleteGig,
+  getAllActiveGigs,
   getAllGigs,
+  getAllPendingGigs,
+  getAllRejectedGigs,
   getGigsByUserId,
   updateGig,
 } from "../controllers/gigs.js";
@@ -31,13 +35,20 @@ router.put(
   updateGig
 );
 
-// Delete a gig by ID
+
 router.delete("/delete/:id", deleteGig);
 
-// Get all gigs for a specific user
 router.get("/all/:userId", getGigsByUserId);
 
-// Get all gigs
 router.get("/all", getAllGigs);
+
+router.get("/active", getAllActiveGigs);
+
+router.get("/pending", getAllPendingGigs);
+
+router.get("/rejected", getAllRejectedGigs);
+
+router.patch("/status/:id", changeGigStatus);
+
 
 export default router;

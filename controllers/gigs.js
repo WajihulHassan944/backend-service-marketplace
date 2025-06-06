@@ -3,6 +3,14 @@ import { Gig } from "../models/gigs.js";
 import ErrorHandler from "../middlewares/error.js";
 import { v4 as uuidv4 } from "uuid";
 import cloudinary from "../utils/cloudinary.js";
+import { User } from "../models/user.js"; // Make sure this is already at the top
+
+import fetch from "node-fetch";
+import jwt from "jsonwebtoken";
+import { transporter } from "../utils/mailer.js";
+import generateEmailTemplate from "../utils/emailTemplate.js";
+import nodemailer from "nodemailer";
+
 
 // Helper function to upload buffer and return full result (secure_url + public_id)
 const uploadToCloudinary = (buffer, folder = "gig_images", resource_type = "image") => {
@@ -65,26 +73,24 @@ export const createGig = async (req, res, next) => {
     const images = [];
     let pdf = { url: "", public_id: "" };
 
-    // Handle optional files
+    // Upload images
     if (req.files) {
-      // Handle multiple image uploads
       if (Array.isArray(req.files.gigImages)) {
         for (const imageFile of req.files.gigImages) {
           if (imageFile?.buffer) {
             const result = await uploadToCloudinary(imageFile.buffer);
-            images.push(result); // { url, public_id }
+            images.push(result);
           }
         }
       }
 
-      // Handle single PDF upload
       if (Array.isArray(req.files.gigPdf) && req.files.gigPdf[0]) {
         const pdfFile = req.files.gigPdf[0];
         if (pdfFile.size > 1 * 1024 * 1024) {
           return next(new ErrorHandler("PDF size exceeds 1MB limit", 400));
         }
         if (pdfFile?.buffer) {
-          pdf = await uploadToCloudinary(pdfFile.buffer, "gig_pdfs", "raw"); // { url, public_id }
+          pdf = await uploadToCloudinary(pdfFile.buffer, "gig_pdfs", "raw");
         }
       }
     }
@@ -102,11 +108,70 @@ export const createGig = async (req, res, next) => {
       images,
       videoIframes: JSON.parse(videoIframes || "[]"),
       pdf,
+      status: "pending",
+    });
+
+    // ✅ Fetch user from DB using userId
+    const user = await User.findById(userId);
+
+    // ✅ Notify user their gig is under review
+    if (user?.email) {
+      const userHtml = generateEmailTemplate({
+        firstName: user.firstName,
+        subject: "Gig Submitted for Review",
+        content: `
+          <h2>Thank you for submitting your gig, ${user.firstName}!</h2>
+          <p>Your gig titled <strong>${gigTitle}</strong> has been successfully submitted and is currently under admin review.</p>
+          <p>We’ll notify you once it’s approved or rejected.</p>
+        `,
+      });
+
+      await transporter.sendMail({
+        from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        to: user.email,
+        subject: "Your Gig is Under Review",
+        html: userHtml,
+      });
+    }
+
+    // ✅ Send gig details to Admin with approve/reject buttons
+    const adminHtml = generateEmailTemplate({
+      firstName: "Admin",
+      subject: "New Gig Submission",
+      content: `
+        <p>A new gig has been submitted by:</p>
+        <ul>
+          <li><strong>Name:</strong> ${user?.firstName || "Unknown"} ${user?.lastName || ""}</li>
+          <li><strong>Email:</strong> ${user?.email || "Unknown"}</li>
+        </ul>
+        <p><strong>Gig Title:</strong> ${gigTitle}</p>
+        <p><strong>Category:</strong> ${category} / ${subcategory}</p>
+        <p><strong>Description:</strong> ${gigDescription.slice(0, 150)}...</p>
+        <div style="margin-top:20px;">
+          <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/${newGig._id}" 
+             style="background-color:#28a745;color:#fff;padding:10px 15px;text-decoration:none;margin-right:10px;border-radius:5px;"
+             onclick="event.preventDefault(); fetch(this.href, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) })">
+            ✅ Approve
+          </a>
+          <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/${newGig._id}" 
+             style="background-color:#dc3545;color:#fff;padding:10px 15px;text-decoration:none;border-radius:5px;"
+             onclick="event.preventDefault(); fetch(this.href, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) })">
+            ❌ Reject
+          </a>
+        </div>
+      `,
+    });
+
+    await transporter.sendMail({
+      from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
+      to: process.env.ADMIN_EMAIL,
+      subject: "New Gig Pending Approval",
+      html: adminHtml,
     });
 
     res.status(201).json({
       success: true,
-      message: "Gig created successfully",
+      message: "Gig created successfully and sent for admin review.",
       gig: newGig,
     });
 
@@ -159,16 +224,12 @@ export const deleteGig = async (req, res, next) => {
   }
 };
 
-
 export const updateGig = async (req, res, next) => {
   try {
     const { id } = req.params;
 
     const gig = await Gig.findById(id);
     if (!gig) return next(new ErrorHandler("Gig not found", 404));
-
-    console.log("📝 Incoming fields:", req.body);
-    console.log("📦 Incoming files:", req.files);
 
     const {
       gigTitle,
@@ -182,17 +243,15 @@ export const updateGig = async (req, res, next) => {
       videoIframes,
     } = req.body;
 
-    // Handle images
+    // Handle image uploads
     if (req.files?.gigImages?.length > 0) {
-      // Delete old images
       for (const imgUrl of gig.images) {
-        const publicId = extractPublicId(imgUrl); // Function below
+        const publicId = extractPublicId(imgUrl);
         if (publicId) {
           await cloudinary.uploader.destroy(publicId);
         }
       }
 
-      // Upload new images
       const uploadedImages = [];
       for (const imageFile of req.files.gigImages) {
         if (imageFile.buffer) {
@@ -203,7 +262,7 @@ export const updateGig = async (req, res, next) => {
       gig.images = uploadedImages;
     }
 
-    // Handle PDF
+    // Handle PDF upload
     if (req.files?.gigPdf?.length > 0) {
       const pdfFile = req.files.gigPdf[0];
 
@@ -211,7 +270,7 @@ export const updateGig = async (req, res, next) => {
         return next(new ErrorHandler("PDF size exceeds 1MB limit", 400));
       }
 
-      const oldPdfPublicId = extractPublicId(gig.pdf); // See below
+      const oldPdfPublicId = extractPublicId(gig.pdf);
       if (oldPdfPublicId) {
         await cloudinary.uploader.destroy(oldPdfPublicId, { resource_type: "raw" });
       }
@@ -220,7 +279,7 @@ export const updateGig = async (req, res, next) => {
       gig.pdf = newPdfUrl;
     }
 
-    // Update other fields
+    // Update fields
     if (gigTitle !== undefined) gig.gigTitle = gigTitle;
     if (category !== undefined) gig.category = category;
     if (subcategory !== undefined) gig.subcategory = subcategory;
@@ -231,11 +290,69 @@ export const updateGig = async (req, res, next) => {
     if (hourlyRate !== undefined) gig.hourlyRate = hourlyRate;
     if (videoIframes !== undefined) gig.videoIframes = JSON.parse(videoIframes);
 
+    // Set status to pending
+    gig.status = "pending";
     await gig.save();
+
+    const user = await User.findById(gig.userId);
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const backendURL = "https://backend-service-marketplace.vercel.app";
+
+    const adminHtml = `
+      <h2>🔄 Gig Updated & Pending Review</h2>
+      <p><strong>Gig Title:</strong> ${gig.gigTitle}</p>
+      <p><strong>User:</strong> ${user?.firstName} ${user?.lastName} (${user?.email})</p>
+      <p><strong>Description:</strong><br>${gig.gigDescription}</p>
+      <p><strong>Hourly Rate:</strong> $${gig.hourlyRate}</p>
+      <br/>
+      <div>
+        <a href="${backendURL}/api/gigs/status/${gig._id}" 
+           style="background-color:#28a745;color:#fff;padding:10px 15px;text-decoration:none;margin-right:10px;border-radius:5px;"
+           onclick="event.preventDefault(); fetch(this.href, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) })">
+          ✅ Approve
+        </a>
+        <a href="${backendURL}/api/gigs/status/${gig._id}" 
+           style="background-color:#dc3545;color:#fff;padding:10px 15px;text-decoration:none;border-radius:5px;"
+           onclick="event.preventDefault(); fetch(this.href, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) })">
+          ❌ Reject
+        </a>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `"Gig Platform" <${adminEmail}>`,
+      to: adminEmail,
+      subject: "🔔 A gig has been updated - Review Required",
+      html: generateEmailTemplate({
+        firstName: "Admin",
+        subject: "A gig was updated and is awaiting approval",
+        content: adminHtml,
+      }),
+    });
+
+    // Notify the user
+    if (user?.email) {
+      const userHtml = `
+        <p>Hi ${user.firstName},</p>
+        <p>Your gig "<strong>${gig.gigTitle}</strong>" has been updated and is now pending approval.</p>
+        <p>You’ll receive another email once it’s approved or rejected by the admin.</p>
+      `;
+
+      await transporter.sendMail({
+        from: `"Gig Platform" <${adminEmail}>`,
+        to: user.email,
+        subject: "🕒 Your gig is pending approval",
+        html: generateEmailTemplate({
+          firstName: user.firstName,
+          subject: "Your gig update is under review",
+          content: userHtml,
+        }),
+      });
+    }
 
     res.status(200).json({
       success: true,
-      message: "Gig updated successfully",
+      message: "Gig updated successfully. Now pending approval.",
       gig,
     });
   } catch (error) {
@@ -289,6 +406,133 @@ export const getAllGigs = async (req, res, next) => {
     });
   } catch (error) {
     console.error("❌ Error in getAllGigs:", error);
+    next(error);
+  }
+};
+
+
+export const getAllActiveGigs = async (req, res, next) => {
+  try {
+    const gigs = await Gig.find({ status: "active" });
+
+    res.status(200).json({
+      success: true,
+      gigs,
+    });
+  } catch (error) {
+    console.error("❌ Error in getAllActiveGigs:", error);
+    next(error);
+  }
+};
+
+export const getAllPendingGigs = async (req, res, next) => {
+  try {
+    const gigs = await Gig.find({ status: "pending" });
+
+    res.status(200).json({
+      success: true,
+      gigs,
+    });
+  } catch (error) {
+    console.error("❌ Error in getAllPendingGigs:", error);
+    next(error);
+  }
+};
+
+export const getAllRejectedGigs = async (req, res, next) => {
+  try {
+    const gigs = await Gig.find({ status: "rejected" });
+
+    res.status(200).json({
+      success: true,
+      gigs,
+    });
+  } catch (error) {
+    console.error("❌ Error in getAllRejectedGigs:", error);
+    next(error);
+  }
+};
+
+
+
+export const changeGigStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const validStatuses = ["active", "pending", "rejected"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).send(renderHtml("Invalid status provided", "danger"));
+    }
+
+    const gig = await Gig.findById(id);
+    if (!gig) {
+      return res.status(404).send(renderHtml("Gig not found", "danger"));
+    }
+
+    // Update gig status
+    gig.status = status;
+    await gig.save();
+
+    // Find the user who created the gig
+    const user = await User.findById(gig.userId);
+
+    // Email the user about the status change
+    if (user?.email) {
+      const subject =
+        status === "active"
+          ? "Your Gig Has Been Approved!"
+          : status === "rejected"
+          ? "Your Gig Has Been Rejected"
+          : "Your Gig Status Has Been Updated";
+
+      const content =
+        status === "active"
+          ? `<p>Congratulations <strong>${user.firstName}</strong>! 🎉</p>
+             <p>Your gig titled <strong>${gig.gigTitle}</strong> has been <span style="color:green;"><strong>approved</strong></span> by our admin team. You can now start receiving orders.</p>`
+          : status === "rejected"
+          ? `<p>Dear <strong>${user.firstName}</strong>,</p>
+             <p>Unfortunately, your gig titled <strong>${gig.gigTitle}</strong> was <span style="color:red;"><strong>rejected</strong></span>.</p>
+             <p>Please review our community guidelines and try again with appropriate modifications.</p>`
+          : `<p>Dear <strong>${user.firstName}</strong>,</p>
+             <p>The status of your gig titled <strong>${gig.gigTitle}</strong> has been updated to: <strong>${status}</strong>.</p>`;
+
+      const html = generateEmailTemplate({
+        firstName: user.firstName,
+        subject,
+        content,
+      });
+
+      await transporter.sendMail({
+        from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        to: user.email,
+        subject,
+        html,
+      });
+    }
+
+    // If it's an admin clicking directly from the email (PATCH triggered via browser)
+    if (req.headers["content-type"] !== "application/json") {
+      const message =
+        status === "active"
+          ? "Gig approved successfully!"
+          : status === "rejected"
+          ? "Gig rejected successfully."
+          : "Gig status updated.";
+      return res.status(200).send(renderHtml(message, "success"));
+    }
+
+    // Otherwise, send JSON for API call
+    return res.status(200).json({
+      success: true,
+      message: `Gig status updated to ${status}`,
+      gig,
+    });
+  } catch (error) {
+    console.error("❌ Error in changeGigStatus:", error);
+    if (req.headers["content-type"] !== "application/json") {
+      return res.status(500).send(renderHtml("Internal server error", "danger"));
+    }
     next(error);
   }
 };

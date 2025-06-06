@@ -59,6 +59,11 @@ const gigSchema = new mongoose.Schema({
       afterProjectSupport: Boolean,
     },
   },
+  status: {
+    type: String,
+    enum: ["pending", "active", "rejected"],
+    default: "pending",
+  },
 
   // Description
   gigDescription: {
