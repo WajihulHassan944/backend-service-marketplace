@@ -164,7 +164,7 @@ export const createGig = async (req, res, next) => {
 
     await transporter.sendMail({
       from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
-      to: process.env.ADMIN_EMAIL,
+      to: 'wajih786hassan@gmail.com',
       subject: "New Gig Pending Approval",
       html: adminHtml,
     });
@@ -321,7 +321,7 @@ export const updateGig = async (req, res, next) => {
 
     await transporter.sendMail({
       from: `"Gig Platform" <${adminEmail}>`,
-      to: adminEmail,
+      to: 'wajih786hassan@gmail.com',
       subject: "🔔 A gig has been updated - Review Required",
       html: generateEmailTemplate({
         firstName: "Admin",
