@@ -452,6 +452,16 @@ export const getAllRejectedGigs = async (req, res, next) => {
   }
 };
 
+function renderHtml(message, type = "info") {
+  const color = type === "success" ? "#28a745" : type === "danger" ? "#dc3545" : "#007bff";
+  return `
+    <div style="font-family:Arial;padding:20px;">
+      <p style="padding:10px 15px;border-radius:5px;background-color:${color};color:white;">
+        ${message}
+      </p>
+    </div>
+  `;
+}
 
 
 export const changeGigStatus = async (req, res, next) => {
