@@ -35,7 +35,7 @@ const gigSchema = new mongoose.Schema({
       packageName: String,
       description: String,
       price: Number,
-      deliveryTime: Number, // in days
+      deliveryTime: Number,
       revisions: Number,
       numberOfPages: Number,
       afterProjectSupport: Boolean,
@@ -71,18 +71,29 @@ const gigSchema = new mongoose.Schema({
 
   // Gig Gallery
   images: {
-    type: [String], // URLs
+    type: [
+      {
+        url: String,         // Cloudinary secure URL
+        public_id: String,   // Cloudinary public ID (used to delete)
+      }
+    ],
     validate: [arrayLimit, '{PATH} exceeds the limit of 3'],
   },
   videoIframes: {
-    type: [String], // e.g., embedded YouTube or Vimeo links
+    type: [String],
     default: [],
   },
-pdf: {
-  type: String, // URL to a single PDF file
-  default: "",
-}
-,
+  pdf: {
+    url: {
+      type: String,
+      default: "",
+    },
+    public_id: {
+      type: String,
+      default: "",
+    },
+  },
+
   createdAt: {
     type: Date,
     default: Date.now,
