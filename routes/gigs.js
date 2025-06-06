@@ -41,7 +41,7 @@ router.delete("/delete/:id", deleteGig);
 
 router.get("/all/:userId", getGigsByUserId);
 
-router.get("/:id", getGigById);
+router.get("/getGigById/:id", getGigById);
 
 router.get("/all", getAllGigs);
 
