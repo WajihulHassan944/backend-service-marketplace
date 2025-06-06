@@ -160,7 +160,6 @@ export const deleteGig = async (req, res, next) => {
 };
 
 
-
 export const updateGig = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -168,7 +167,9 @@ export const updateGig = async (req, res, next) => {
     const gig = await Gig.findById(id);
     if (!gig) return next(new ErrorHandler("Gig not found", 404));
 
-    // Parse fields from req.body
+    console.log("📝 Incoming fields:", req.body);
+    console.log("📦 Incoming files:", req.files);
+
     const {
       gigTitle,
       category,
@@ -181,58 +182,54 @@ export const updateGig = async (req, res, next) => {
       videoIframes,
     } = req.body;
 
-    // Update images if new ones are uploaded
-    let updatedImages = gig.images;
-    if (req.files && Array.isArray(req.files.gigImages) && req.files.gigImages.length > 0) {
-      // Delete old images from Cloudinary
-      if (Array.isArray(gig.images)) {
-        for (const image of gig.images) {
-          if (image.public_id) {
-            await cloudinary.uploader.destroy(image.public_id);
-          }
+    // Handle images
+    if (req.files?.gigImages?.length > 0) {
+      // Delete old images
+      for (const imgUrl of gig.images) {
+        const publicId = extractPublicId(imgUrl); // Function below
+        if (publicId) {
+          await cloudinary.uploader.destroy(publicId);
         }
       }
 
       // Upload new images
-      updatedImages = [];
+      const uploadedImages = [];
       for (const imageFile of req.files.gigImages) {
-        if (imageFile?.buffer) {
-          const result = await uploadToCloudinary(imageFile.buffer);
-          updatedImages.push(result);
+        if (imageFile.buffer) {
+          const newImageUrl = await uploadToCloudinary(imageFile.buffer);
+          uploadedImages.push(newImageUrl);
         }
       }
+      gig.images = uploadedImages;
     }
 
-    // Update PDF if new one is uploaded
-    let updatedPdf = gig.pdf;
-    if (req.files && Array.isArray(req.files.gigPdf) && req.files.gigPdf.length > 0) {
-      // Delete old PDF from Cloudinary
-      if (gig.pdf?.public_id) {
-        await cloudinary.uploader.destroy(gig.pdf.public_id, { resource_type: "raw" });
-      }
-
+    // Handle PDF
+    if (req.files?.gigPdf?.length > 0) {
       const pdfFile = req.files.gigPdf[0];
+
       if (pdfFile.size > 1 * 1024 * 1024) {
         return next(new ErrorHandler("PDF size exceeds 1MB limit", 400));
       }
-      if (pdfFile?.buffer) {
-        updatedPdf = await uploadToCloudinary(pdfFile.buffer, "gig_pdfs", "raw");
+
+      const oldPdfPublicId = extractPublicId(gig.pdf); // See below
+      if (oldPdfPublicId) {
+        await cloudinary.uploader.destroy(oldPdfPublicId, { resource_type: "raw" });
       }
+
+      const newPdfUrl = await uploadToCloudinary(pdfFile.buffer, "gig_pdfs", "raw");
+      gig.pdf = newPdfUrl;
     }
 
     // Update other fields
-    gig.gigTitle = gigTitle || gig.gigTitle;
-    gig.category = category || gig.category;
-    gig.subcategory = subcategory || gig.subcategory;
-    gig.searchTag = searchTag || gig.searchTag;
-    gig.positiveKeywords = positiveKeywords ? JSON.parse(positiveKeywords) : gig.positiveKeywords;
-    gig.packages = packages ? JSON.parse(packages) : gig.packages;
-    gig.gigDescription = gigDescription || gig.gigDescription;
-    gig.hourlyRate = hourlyRate !== undefined ? hourlyRate : gig.hourlyRate;
-    gig.videoIframes = videoIframes ? JSON.parse(videoIframes) : gig.videoIframes;
-
-    gig.images = updatedImages;
-    gig.pdf = updatedPdf;
+    if (gigTitle !== undefined) gig.gigTitle = gigTitle;
+    if (category !== undefined) gig.category = category;
+    if (subcategory !== undefined) gig.subcategory = subcategory;
+    if (searchTag !== undefined) gig.searchTag = searchTag;
+    if (positiveKeywords !== undefined) gig.positiveKeywords = JSON.parse(positiveKeywords);
+    if (packages !== undefined) gig.packages = JSON.parse(packages);
+    if (gigDescription !== undefined) gig.gigDescription = gigDescription;
+    if (hourlyRate !== undefined) gig.hourlyRate = hourlyRate;
+    if (videoIframes !== undefined) gig.videoIframes = JSON.parse(videoIframes);
 
     await gig.save();
 
@@ -241,13 +238,24 @@ export const updateGig = async (req, res, next) => {
       message: "Gig updated successfully",
       gig,
     });
-
   } catch (error) {
-    console.error("❌ Error in updateGigById:", error);
+    console.error("❌ Error in updateGig:", error);
     next(error);
   }
 };
 
+// 🔧 Helper to extract Cloudinary public_id from a URL
+function extractPublicId(url) {
+  try {
+    const parts = url.split("/");
+    const fileWithExt = parts[parts.length - 1];
+    const publicId = fileWithExt.substring(0, fileWithExt.lastIndexOf(".")); // Remove extension
+    const folderPath = parts.slice(parts.length - 2, parts.length - 1)[0]; // e.g., gig_images
+    return `${folderPath}/${publicId}`;
+  } catch {
+    return null;
+  }
+}
 
 
 export const getGigsByUserId = async (req, res, next) => {
