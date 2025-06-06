@@ -148,16 +148,16 @@ export const createGig = async (req, res, next) => {
         <p><strong>Category:</strong> ${category} / ${subcategory}</p>
         <p><strong>Description:</strong> ${gigDescription.slice(0, 150)}...</p>
         <div style="margin-top:20px;">
-          <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/${newGig._id}" 
-             style="background-color:#28a745;color:#fff;padding:10px 15px;text-decoration:none;margin-right:10px;border-radius:5px;"
-             onclick="event.preventDefault(); fetch(this.href, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) })">
-            ✅ Approve
-          </a>
-          <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/${newGig._id}" 
-             style="background-color:#dc3545;color:#fff;padding:10px 15px;text-decoration:none;border-radius:5px;"
-             onclick="event.preventDefault(); fetch(this.href, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) })">
-            ❌ Reject
-          </a>
+        <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/approve/${newGig._id}" 
+   style="background-color:#28a745;color:#fff;padding:10px 15px;text-decoration:none;margin-right:10px;border-radius:5px;">
+   ✅ Approve
+</a>
+
+<a href="https://backend-service-marketplace.vercel.app/api/gigs/status/reject/${newGig._id}" 
+   style="background-color:#dc3545;color:#fff;padding:10px 15px;text-decoration:none;border-radius:5px;">
+   ❌ Reject
+</a>
+
         </div>
       `,
     });
@@ -306,17 +306,16 @@ export const updateGig = async (req, res, next) => {
       <p><strong>Hourly Rate:</strong> $${gig.hourlyRate}</p>
       <br/>
       <div>
-        <a href="${backendURL}/api/gigs/status/${gig._id}" 
-           style="background-color:#28a745;color:#fff;padding:10px 15px;text-decoration:none;margin-right:10px;border-radius:5px;"
-           onclick="event.preventDefault(); fetch(this.href, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'active' }) })">
-          ✅ Approve
-        </a>
-        <a href="${backendURL}/api/gigs/status/${gig._id}" 
-           style="background-color:#dc3545;color:#fff;padding:10px 15px;text-decoration:none;border-radius:5px;"
-           onclick="event.preventDefault(); fetch(this.href, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'rejected' }) })">
-          ❌ Reject
-        </a>
-      </div>
+       <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/approve/${newGig._id}" 
+   style="background-color:#28a745;color:#fff;padding:10px 15px;text-decoration:none;margin-right:10px;border-radius:5px;">
+   ✅ Approve
+</a>
+
+<a href="https://backend-service-marketplace.vercel.app/api/gigs/status/reject/${newGig._id}" 
+   style="background-color:#dc3545;color:#fff;padding:10px 15px;text-decoration:none;border-radius:5px;">
+   ❌ Reject
+</a>
+ </div>
     `;
 
     await transporter.sendMail({
@@ -533,6 +532,29 @@ export const changeGigStatus = async (req, res, next) => {
     if (req.headers["content-type"] !== "application/json") {
       return res.status(500).send(renderHtml("Internal server error", "danger"));
     }
+    next(error);
+  }
+};
+
+
+export const getGigById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const gig = await Gig.findById(id);
+    if (!gig) {
+      return res.status(404).json({
+        success: false,
+        message: "Gig not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      gig,
+    });
+  } catch (error) {
+    console.error("❌ Error in getGigById:", error);
     next(error);
   }
 };

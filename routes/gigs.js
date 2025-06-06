@@ -9,6 +9,7 @@ import {
   getAllGigs,
   getAllPendingGigs,
   getAllRejectedGigs,
+  getGigById,
   getGigsByUserId,
   updateGig,
 } from "../controllers/gigs.js";
@@ -40,6 +41,8 @@ router.delete("/delete/:id", deleteGig);
 
 router.get("/all/:userId", getGigsByUserId);
 
+router.get("/:id", getGigById);
+
 router.get("/all", getAllGigs);
 
 router.get("/active", getAllActiveGigs);
@@ -49,6 +52,22 @@ router.get("/pending", getAllPendingGigs);
 router.get("/rejected", getAllRejectedGigs);
 
 router.patch("/status/:id", changeGigStatus);
+
+// Approve gig via GET
+router.get("/status/approve/:id", async (req, res, next) => {
+  req.body.status = "active"; // set status manually
+  req.headers["content-type"] = ""; // make sure HTML response is returned
+  req.params.id = req.params.id;
+  changeGigStatus(req, res, next);
+});
+
+// Reject gig via GET
+router.get("/status/reject/:id", async (req, res, next) => {
+  req.body.status = "rejected"; // set status manually
+  req.headers["content-type"] = ""; // make sure HTML response is returned
+  req.params.id = req.params.id;
+  changeGigStatus(req, res, next);
+});
 
 
 export default router;
