@@ -394,10 +394,9 @@ export const getGigsByUserId = async (req, res, next) => {
   }
 };
 
-
 export const getAllGigs = async (req, res, next) => {
   try {
-    const gigs = await Gig.find();
+    const gigs = await Gig.find().populate('userId');
 
     res.status(200).json({
       success: true,
