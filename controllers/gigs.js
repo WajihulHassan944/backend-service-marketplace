@@ -538,6 +538,7 @@ export const changeGigStatus = async (req, res, next) => {
 };
 
 
+
 export const getGigById = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -550,9 +551,19 @@ export const getGigById = async (req, res, next) => {
       });
     }
 
+    // Fetch user by gig.userId
+    const user = await User.findById(gig.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found for this gig",
+      });
+    }
+
     res.status(200).json({
       success: true,
       gig,
+      user,
     });
   } catch (error) {
     console.error("❌ Error in getGigById:", error);
