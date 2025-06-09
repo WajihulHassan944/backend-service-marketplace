@@ -1,11 +1,12 @@
 import ErrorHandler from "../middlewares/error.js";
 import { Category } from "../models/category.js";
+import { Gig } from "../models/gigs.js";
 import cloudinary from "../utils/cloudinary.js";
 import streamifier from "streamifier";
 
 export const createCategory = async (req, res, next) => {
   try {
-    const { name, icon } = req.body;
+    const { name, icon, subcategories } = req.body;
 
     if (!name || !icon) {
       return next(new ErrorHandler("Name and icon are required.", 400));
@@ -35,6 +36,11 @@ export const createCategory = async (req, res, next) => {
       name,
       icon,
       image: imageUrl,
+      subcategories: Array.isArray(subcategories)
+        ? subcategories
+        : typeof subcategories === "string"
+        ? subcategories.split(",").map((s) => s.trim())
+        : [],
     });
 
     res.status(201).json({
@@ -74,23 +80,37 @@ export const deleteCategory = async (req, res, next) => {
   }
 };
 
+
+
 export const getAllCategories = async (req, res, next) => {
   try {
     const categories = await Category.find();
 
+    const categoriesWithGigCounts = await Promise.all(
+      categories.map(async (cat) => {
+        const gigCount = await Gig.countDocuments({ category: cat.name });
+        return {
+          ...cat.toObject(),
+          gigCount,
+        };
+      })
+    );
+
     res.status(200).json({
       success: true,
-      categories,
+      categories: categoriesWithGigCounts,
     });
   } catch (error) {
     next(error);
   }
 };
 
+
+
 export const updateCategory = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, icon } = req.body;
+    const { name, icon, subcategories } = req.body;
 
     const category = await Category.findById(id);
     if (!category) {
@@ -121,9 +141,16 @@ export const updateCategory = async (req, res, next) => {
       category.image = cloudinaryUpload.secure_url;
     }
 
-    // Update name/icon if provided
+    // Update fields if provided
     if (name) category.name = name;
     if (icon) category.icon = icon;
+    if (subcategories) {
+      category.subcategories = Array.isArray(subcategories)
+        ? subcategories
+        : typeof subcategories === "string"
+        ? subcategories.split(",").map((s) => s.trim())
+        : [];
+    }
 
     await category.save();
 
