@@ -150,12 +150,12 @@ export const createGig = async (req, res, next) => {
         <div style="margin-top:20px;">
         <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/approve/${newGig._id}" 
    style="background-color:#28a745;color:#fff;padding:10px 15px;text-decoration:none;margin-right:10px;border-radius:5px;">
-   ✅ Approve
+  Approve
 </a>
 
 <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/reject/${newGig._id}" 
    style="background-color:#dc3545;color:#fff;padding:10px 15px;text-decoration:none;border-radius:5px;">
-   ❌ Reject
+    Reject
 </a>
 
         </div>
@@ -308,12 +308,12 @@ export const updateGig = async (req, res, next) => {
       <div>
        <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/approve/${gig._id}" 
    style="background-color:#28a745;color:#fff;padding:10px 15px;text-decoration:none;margin-right:10px;border-radius:5px;">
-   ✅ Approve
+   Approve
 </a>
 
 <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/reject/${gig._id}" 
    style="background-color:#dc3545;color:#fff;padding:10px 15px;text-decoration:none;border-radius:5px;">
-   ❌ Reject
+   Reject
 </a>
  </div>
     `;

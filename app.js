@@ -1,6 +1,7 @@
 import express from "express";
 import userRouter from "./routes/user.js";
 import gigsRouter from "./routes/gigs.js";
+import categoryRouter from "./routes/category.js";
 import { config } from "dotenv";
 import cookieParser from "cookie-parser";
 import { errorMiddleware } from "./middlewares/error.js";
@@ -24,6 +25,7 @@ app.use(
 );
 // Using routes
 app.use("/api/users", userRouter);
+app.use("/api/category", userRouter);
 app.use("/api/gigs", gigsRouter);
 
 app.get("/", (req, res) => {
