@@ -25,7 +25,7 @@ app.use(
 );
 // Using routes
 app.use("/api/users", userRouter);
-app.use("/api/category", userRouter);
+app.use("/api/category", categoryRouter);
 app.use("/api/gigs", gigsRouter);
 
 app.get("/", (req, res) => {

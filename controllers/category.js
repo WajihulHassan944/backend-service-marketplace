@@ -1,7 +1,7 @@
 import ErrorHandler from "../middlewares/error.js";
+import { Category } from "../models/category.js";
 import cloudinary from "../utils/cloudinary.js";
 import streamifier from "streamifier";
-import { Category } from "../models/category.js"; // Assuming you named your model file category.js
 
 export const createCategory = async (req, res, next) => {
   try {
