@@ -11,12 +11,12 @@ import upload from "../middlewares/upload.js";
 
 const router = express.Router();
 
-router.post("/create", isAuthenticatedSuperAdmin, upload.single("image"), createCategory);
+router.post("/create",  upload.single("image"), createCategory);
 
 router.get("/all", getAllCategories);
 
-router.put("/update/:id", isAuthenticatedSuperAdmin, upload.single("image"), updateCategory);
+router.put("/update/:id",  upload.single("image"), updateCategory);
 
-router.delete("/delete/:id", isAuthenticatedSuperAdmin, deleteCategory);
+router.delete("/delete/:id",  deleteCategory);
 
 export default router;
