@@ -1,6 +1,7 @@
 import express from "express";
 import userRouter from "./routes/user.js";
 import gigsRouter from "./routes/gigs.js";
+import messagesRouter from "./routes/messages.js";
 import categoryRouter from "./routes/category.js";
 import { config } from "dotenv";
 import cookieParser from "cookie-parser";
@@ -27,6 +28,7 @@ app.use(
 app.use("/api/users", userRouter);
 app.use("/api/category", categoryRouter);
 app.use("/api/gigs", gigsRouter);
+app.use("/api/messages", messagesRouter);
 
 app.get("/", (req, res) => {
   res.send("Nice working backend by Muhammad Furqan Wajih");
