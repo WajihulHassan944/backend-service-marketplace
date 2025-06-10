@@ -16,20 +16,26 @@ export const postMessage = async (req, res, next) => {
 
     const sender = await User.findById(senderId);
     const receiver = await User.findById(receiverId);
+
     if (!sender || !receiver) {
       return next(new ErrorHandler("Invalid sender or receiver", 404));
     }
 
-    // Sort participants to ensure consistent ordering
-    const sortedParticipants = [senderId, receiverId].sort();
+    // Sort participant IDs consistently
+    const [participantOne, participantTwo] =
+      senderId.toString() < receiverId.toString()
+        ? [senderId, receiverId]
+        : [receiverId, senderId];
 
     let conversation = await Conversation.findOne({
-      participants: sortedParticipants,
+      participantOne,
+      participantTwo,
     });
 
     if (!conversation) {
       conversation = await Conversation.create({
-        participants: sortedParticipants,
+        participantOne,
+        participantTwo,
       });
     }
 
@@ -50,9 +56,16 @@ export const postMessage = async (req, res, next) => {
       data: newMessage,
     });
   } catch (error) {
+    if (error.code === 11000) {
+      return next(
+        new ErrorHandler("Duplicate conversation detected. Please try again.", 409)
+      );
+    }
+
     return next(error);
   }
 };
+
 
 
 
@@ -64,17 +77,23 @@ export const getUserConversations = async (req, res, next) => {
       return next(new ErrorHandler("Invalid userId", 400));
     }
 
-    // Get all conversations where user is a participant
+    // Find all conversations where user is either participantOne or participantTwo
     const conversations = await Conversation.find({
-      participants: userId,
+      $or: [
+        { participantOne: userId },
+        { participantTwo: userId }
+      ],
     })
       .sort({ lastUpdated: -1 })
-      .populate("participants", "firstName lastName profileUrl role");
+      .populate("participantOne", "firstName lastName profileUrl role")
+      .populate("participantTwo", "firstName lastName profileUrl role");
 
-    // For each conversation, fetch the last message
+    // Attach last message to each conversation
     const conversationsWithMessages = await Promise.all(
       conversations.map(async (conversation) => {
-        const lastMessage = await Message.findOne({ conversationId: conversation._id })
+        const lastMessage = await Message.findOne({
+          conversationId: conversation._id,
+        })
           .sort({ createdAt: -1 })
           .select("message senderId createdAt isRead");
 
@@ -94,6 +113,7 @@ export const getUserConversations = async (req, res, next) => {
   }
 };
 
+
 export const getMessagesByConversationId = async (req, res, next) => {
   try {
     const { conversationId } = req.params;
@@ -102,17 +122,16 @@ export const getMessagesByConversationId = async (req, res, next) => {
       return next(new ErrorHandler("Invalid conversationId", 400));
     }
 
-    // Check conversation exists
-    const conversation = await Conversation.findById(conversationId).populate(
-      "participants",
-      "firstName lastName profileUrl"
-    );
+    // Check if the conversation exists
+    const conversation = await Conversation.findById(conversationId)
+      .populate("participantOne", "firstName lastName profileUrl")
+      .populate("participantTwo", "firstName lastName profileUrl");
 
     if (!conversation) {
       return next(new ErrorHandler("Conversation not found", 404));
     }
 
-    // Fetch and populate messages
+    // Fetch all messages in this conversation
     const messages = await Message.find({ conversationId })
       .sort({ createdAt: 1 })
       .populate("senderId", "firstName lastName profileUrl")
@@ -127,6 +146,7 @@ export const getMessagesByConversationId = async (req, res, next) => {
   }
 };
 
+
 export const getConversationPartners = async (req, res, next) => {
   try {
     const { userId } = req.params;
@@ -135,62 +155,34 @@ export const getConversationPartners = async (req, res, next) => {
       return next(new ErrorHandler("Invalid userId", 400));
     }
 
-    // Get all messages where user is either sender or receiver
-    const messages = await Message.find({
-      $or: [{ senderId: userId }, { receiverId: userId }]
-    }).sort({ createdAt: -1 });
+    // Get all conversations where the user is either participantOne or participantTwo
+    const conversations = await Conversation.find({
+      $or: [{ participantOne: userId }, { participantTwo: userId }],
+    })
+      .sort({ lastUpdated: -1 })
+      .populate("participantOne", "firstName lastName profileUrl")
+      .populate("participantTwo", "firstName lastName profileUrl");
 
-    if (messages.length === 0) {
-      return res.status(200).json({ success: true, data: [] });
-    }
+    const results = conversations.map((convo) => {
+      const isUserParticipantOne = convo.participantOne._id.toString() === userId;
+      const otherParticipant = isUserParticipantOne ? convo.participantTwo : convo.participantOne;
 
-    const uniqueConversations = new Map();
-
-    messages.forEach((msg) => {
-      const isSelf = msg.senderId.toString() === msg.receiverId.toString();
-      const otherUserId = isSelf
-        ? userId
-        : (msg.senderId.toString() === userId
-            ? msg.receiverId.toString()
-            : msg.senderId.toString());
-
-      // Avoid duplicates, keep latest message info
-      if (!uniqueConversations.has(otherUserId)) {
-        uniqueConversations.set(otherUserId, {
-          conversationId: msg.conversationId,
-          participantId: otherUserId,
-          lastMessage: msg.message,
-          lastMessageCreatedAt: msg.createdAt,
-        });
-      }
-    });
-
-    const participantIds = Array.from(uniqueConversations.values()).map(
-      (c) => c.participantId
-    );
-
-    const users = await User.find({ _id: { $in: participantIds } }).select(
-      "firstName lastName profileUrl"
-    );
-
-    const results = users.map((user) => {
-      const convo = Array.from(uniqueConversations.values()).find(
-        (c) => c.participantId === user._id.toString()
-      );
       return {
-        conversationId: convo.conversationId,
-        participant: user,
-        lastMessage: convo.lastMessage,
-        lastMessageCreatedAt: convo.lastMessageCreatedAt,
+        conversationId: convo._id,
+        participant: otherParticipant,
+        lastMessage: convo.lastMessage || "",
+        lastMessageCreatedAt: convo.lastUpdated,
       };
     });
 
-    res.status(200).json({ success: true, data: results });
+    res.status(200).json({
+      success: true,
+      data: results,
+    });
   } catch (error) {
     next(error);
   }
 };
-
 export const markMessagesAsRead = async (req, res, next) => {
   try {
     const { conversationId, userId } = req.body;
