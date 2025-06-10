@@ -90,7 +90,6 @@ export const getUserConversations = async (req, res, next) => {
   }
 };
 
-
 export const getMessagesByConversationId = async (req, res, next) => {
   try {
     const { conversationId } = req.params;
@@ -99,7 +98,7 @@ export const getMessagesByConversationId = async (req, res, next) => {
       return next(new ErrorHandler("Invalid conversationId", 400));
     }
 
-    // Fetch conversation to get participant IDs
+    // Check conversation exists
     const conversation = await Conversation.findById(conversationId).populate(
       "participants",
       "firstName lastName profileUrl"
@@ -109,31 +108,21 @@ export const getMessagesByConversationId = async (req, res, next) => {
       return next(new ErrorHandler("Conversation not found", 404));
     }
 
-    // Fetch all messages in the conversation
+    // Fetch and populate messages
     const messages = await Message.find({ conversationId })
-  .sort({ createdAt: 1 })
-  .populate("senderId", "firstName lastName profileUrl")
-  .populate("receiverId", "firstName lastName profileUrl");
-  
-    const enrichedMessages = messages.map((msg) => {
-      const receiver = conversation.participants.find(
-        (participant) => participant._id.toString() !== msg.senderId._id.toString()
-      );
-
-      return {
-        ...msg.toObject(),
-        receiverId: receiver || null,
-      };
-    });
+      .sort({ createdAt: 1 })
+      .populate("senderId", "firstName lastName profileUrl")
+      .populate("receiverId", "firstName lastName profileUrl");
 
     res.status(200).json({
       success: true,
-      data: enrichedMessages,
+      data: messages,
     });
   } catch (error) {
     next(error);
   }
 };
+
 
 
 export const markMessagesAsRead = async (req, res, next) => {
