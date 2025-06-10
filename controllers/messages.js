@@ -111,10 +111,10 @@ export const getMessagesByConversationId = async (req, res, next) => {
 
     // Fetch all messages in the conversation
     const messages = await Message.find({ conversationId })
-      .sort({ createdAt: 1 })
-      .populate("senderId", "firstName lastName profileUrl");
-
-    // Optional: For each message, attach receiver info by filtering participants
+  .sort({ createdAt: 1 })
+  .populate("senderId", "firstName lastName profileUrl")
+  .populate("receiverId", "firstName lastName profileUrl");
+  
     const enrichedMessages = messages.map((msg) => {
       const receiver = conversation.participants.find(
         (participant) => participant._id.toString() !== msg.senderId._id.toString()
