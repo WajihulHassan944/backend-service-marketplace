@@ -9,7 +9,9 @@ export const postMessage = async (req, res, next) => {
     const { senderId, receiverId, message } = req.body;
 
     if (!senderId || !receiverId || !message) {
-      return next(new ErrorHandler("senderId, receiverId, and message are required", 400));
+      return next(
+        new ErrorHandler("senderId, receiverId, and message are required", 400)
+      );
     }
 
     const sender = await User.findById(senderId);
@@ -18,24 +20,26 @@ export const postMessage = async (req, res, next) => {
       return next(new ErrorHandler("Invalid sender or receiver", 404));
     }
 
+    // Sort participants to ensure consistent ordering
+    const sortedParticipants = [senderId, receiverId].sort();
+
     let conversation = await Conversation.findOne({
-      participants: { $all: [senderId, receiverId], $size: 2 },
+      participants: sortedParticipants,
     });
 
     if (!conversation) {
       conversation = await Conversation.create({
-        participants: [senderId, receiverId],
+        participants: sortedParticipants,
       });
     }
 
     const newMessage = await Message.create({
       conversationId: conversation._id,
       senderId,
-      receiverId, // ✅ Add this line to save receiverId
+      receiverId,
       message,
     });
 
-    // Update last message in conversation
     conversation.lastMessage = message;
     conversation.lastUpdated = new Date();
     await conversation.save();
