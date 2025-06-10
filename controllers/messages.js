@@ -123,7 +123,6 @@ export const getMessagesByConversationId = async (req, res, next) => {
   }
 };
 
-
 export const getConversationPartners = async (req, res, next) => {
   try {
     const { userId } = req.params;
@@ -145,26 +144,40 @@ export const getConversationPartners = async (req, res, next) => {
 
     messages.forEach((msg) => {
       const isSelf = msg.senderId.toString() === msg.receiverId.toString();
-      const otherUserId = isSelf ? userId : (msg.senderId.toString() === userId ? msg.receiverId.toString() : msg.senderId.toString());
+      const otherUserId = isSelf
+        ? userId
+        : (msg.senderId.toString() === userId
+            ? msg.receiverId.toString()
+            : msg.senderId.toString());
 
       // Avoid duplicates, keep latest message info
       if (!uniqueConversations.has(otherUserId)) {
         uniqueConversations.set(otherUserId, {
           conversationId: msg.conversationId,
-          participantId: otherUserId
+          participantId: otherUserId,
+          lastMessage: msg.message,
+          lastMessageCreatedAt: msg.createdAt,
         });
       }
     });
 
-    const participantIds = Array.from(uniqueConversations.values()).map(c => c.participantId);
+    const participantIds = Array.from(uniqueConversations.values()).map(
+      (c) => c.participantId
+    );
 
-    const users = await User.find({ _id: { $in: participantIds } }).select("firstName lastName profileUrl");
+    const users = await User.find({ _id: { $in: participantIds } }).select(
+      "firstName lastName profileUrl"
+    );
 
-    const results = users.map(user => {
-      const convo = Array.from(uniqueConversations.values()).find(c => c.participantId === user._id.toString());
+    const results = users.map((user) => {
+      const convo = Array.from(uniqueConversations.values()).find(
+        (c) => c.participantId === user._id.toString()
+      );
       return {
         conversationId: convo.conversationId,
-        participant: user
+        participant: user,
+        lastMessage: convo.lastMessage,
+        lastMessageCreatedAt: convo.lastMessageCreatedAt,
       };
     });
 
