@@ -31,6 +31,7 @@ export const postMessage = async (req, res, next) => {
     const newMessage = await Message.create({
       conversationId: conversation._id,
       senderId,
+      receiverId, // ✅ Add this line to save receiverId
       message,
     });
 
