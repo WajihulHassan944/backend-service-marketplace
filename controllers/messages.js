@@ -124,6 +124,55 @@ export const getMessagesByConversationId = async (req, res, next) => {
 };
 
 
+export const getConversationPartners = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return next(new ErrorHandler("Invalid userId", 400));
+    }
+
+    // Get all messages where user is either sender or receiver
+    const messages = await Message.find({
+      $or: [{ senderId: userId }, { receiverId: userId }]
+    }).sort({ createdAt: -1 });
+
+    if (messages.length === 0) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    const uniqueConversations = new Map();
+
+    messages.forEach((msg) => {
+      const isSelf = msg.senderId.toString() === msg.receiverId.toString();
+      const otherUserId = isSelf ? userId : (msg.senderId.toString() === userId ? msg.receiverId.toString() : msg.senderId.toString());
+
+      // Avoid duplicates, keep latest message info
+      if (!uniqueConversations.has(otherUserId)) {
+        uniqueConversations.set(otherUserId, {
+          conversationId: msg.conversationId,
+          participantId: otherUserId
+        });
+      }
+    });
+
+    const participantIds = Array.from(uniqueConversations.values()).map(c => c.participantId);
+
+    const users = await User.find({ _id: { $in: participantIds } }).select("firstName lastName profileUrl");
+
+    const results = users.map(user => {
+      const convo = Array.from(uniqueConversations.values()).find(c => c.participantId === user._id.toString());
+      return {
+        conversationId: convo.conversationId,
+        participant: user
+      };
+    });
+
+    res.status(200).json({ success: true, data: results });
+  } catch (error) {
+    next(error);
+  }
+};
 
 export const markMessagesAsRead = async (req, res, next) => {
   try {
