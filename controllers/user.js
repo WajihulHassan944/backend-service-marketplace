@@ -746,3 +746,26 @@ export const logout = (req, res) => {
       },
     });
 };
+
+
+
+export const getUserById = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId).select(
+      "firstName lastName email profileUrl role country sellerStatus sellerDetails verified blocked"
+    );
+
+    if (!user) {
+      return next(new ErrorHandler("User not found", 404));
+    }
+
+    res.status(200).json({
+      success: true,
+      data: user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

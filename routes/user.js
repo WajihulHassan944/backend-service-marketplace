@@ -1,5 +1,5 @@
 import express from "express";
-import { blockUser, deleteUserById, getAllAdmins, getAllBuyers, getAllSellers, getAllUsers, getMyProfile, googleLogin, googleRegister, login, logout, register, requestSellerRole, sellerRequest, unblockUser, verifyEmail, verifyUser } from "../controllers/user.js";
+import { blockUser, deleteUserById, getAllAdmins, getAllBuyers, getAllSellers, getAllUsers, getMyProfile, getUserById, googleLogin, googleRegister, login, logout, register, requestSellerRole, sellerRequest, unblockUser, verifyEmail, verifyUser } from "../controllers/user.js";
 import { isAuthenticated, isAuthenticatedSuperAdmin } from "../middlewares/auth.js";
 import upload from "../middlewares/upload.js";
 
@@ -22,6 +22,7 @@ router.get("/verify/:id", verifyUser);
 router.get("/verify-email", verifyEmail);
 router.post("/request-seller", isAuthenticated, requestSellerRole);
 router.put("/:id/seller-request", sellerRequest);
+router.get("/getUserById/:userId", getUserById);
 
 
 export default router;
