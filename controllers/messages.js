@@ -4,6 +4,7 @@ import { User } from "../models/user.js";
 import ErrorHandler from "../middlewares/error.js";
 import mongoose from "mongoose";
 
+
 export const postMessage = async (req, res, next) => {
   try {
     const { senderId, receiverId, message } = req.body;
@@ -21,7 +22,6 @@ export const postMessage = async (req, res, next) => {
       return next(new ErrorHandler("Invalid sender or receiver", 404));
     }
 
-    // Sort participant IDs consistently
     const [participantOne, participantTwo] =
       senderId.toString() < receiverId.toString()
         ? [senderId, receiverId]
@@ -39,12 +39,18 @@ export const postMessage = async (req, res, next) => {
       });
     }
 
+    // Create and then populate the new message
     const newMessage = await Message.create({
       conversationId: conversation._id,
       senderId,
       receiverId,
       message,
     });
+
+    // Populate senderId and receiverId before sending response
+    const populatedMessage = await Message.findById(newMessage._id)
+      .populate("senderId", "firstName lastName profileUrl")
+      .populate("receiverId", "firstName lastName profileUrl");
 
     conversation.lastMessage = message;
     conversation.lastUpdated = new Date();
@@ -53,7 +59,7 @@ export const postMessage = async (req, res, next) => {
     return res.status(201).json({
       success: true,
       message: "Message sent successfully",
-      data: newMessage,
+      data: populatedMessage,
     });
   } catch (error) {
     if (error.code === 11000) {
