@@ -1,0 +1,148 @@
+import { Gig } from "../models/gigs.js";
+import { User } from "../models/user.js";
+import { Order } from "../models/orders.js";
+import ErrorHandler from "../middlewares/error.js";
+import { transporter } from "../utils/mailer.js";
+import generateEmailTemplate from "../utils/emailTemplate.js";
+import streamifier from "streamifier";
+import cloudinary from "../utils/cloudinary.js";
+
+// Helper to upload any type of file to Cloudinary
+const uploadToCloudinary = (buffer, originalName = "file") => {
+  return new Promise((resolve, reject) => {
+    const fileType = originalName.split('.').pop().toLowerCase();
+    let resource_type = "auto"; // handles image, pdf, zip, docx, etc.
+
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "order_files",
+        resource_type,
+        use_filename: true,
+        unique_filename: true,
+        overwrite: false,
+      },
+      (error, result) => {
+        if (result) {
+          console.log("✅ Uploaded file:", result.secure_url);
+          resolve({
+            url: result.secure_url,
+            public_id: result.public_id,
+          });
+        } else {
+          console.error("❌ Cloudinary file upload error:", error);
+          reject(error);
+        }
+      }
+    );
+
+    streamifier.createReadStream(buffer).pipe(stream);
+  });
+};
+
+// POST /api/orders
+export const createOrder = async (req, res, next) => {
+  try {
+    const { gigId, buyerId, sellerId, packageType, requirements, totalAmount } = req.body;
+
+    if (!gigId || !buyerId || !sellerId || !packageType || !requirements || !totalAmount) {
+      return next(new ErrorHandler("Missing required fields", 400));
+    }
+
+    // Fetch gig
+    const gig = await Gig.findById(gigId);
+    if (!gig) return next(new ErrorHandler("Gig not found", 404));
+
+    const selectedPackage = gig.packages[packageType];
+    if (!selectedPackage) return next(new ErrorHandler("Invalid package type", 400));
+
+    // Fetch users
+    const buyer = await User.findById(buyerId);
+    const seller = await User.findById(sellerId);
+    if (!buyer || !seller) {
+      return next(new ErrorHandler("Buyer or seller not found", 404));
+    }
+
+    // Handle file upload (optional, 1 file max)
+    let uploadedFiles = [];
+    if (req.file && req.file.buffer) {
+      try {
+        const fileResult = await uploadToCloudinary(req.file.buffer, req.file.originalname);
+        uploadedFiles.push(fileResult);
+      } catch (uploadErr) {
+        return next(new ErrorHandler("File upload failed", 500));
+      }
+    }
+
+    // Create Order
+    const order = await Order.create({
+      gigId,
+      buyerId,
+      sellerId,
+      packageType,
+      packageDetails: {
+        packageName: selectedPackage.packageName,
+        description: selectedPackage.description,
+        price: selectedPackage.price,
+        deliveryTime: selectedPackage.deliveryTime,
+        revisions: selectedPackage.revisions,
+        numberOfPages: selectedPackage.numberOfPages,
+        afterProjectSupport: selectedPackage.afterProjectSupport,
+      },
+      requirements,
+      totalAmount,
+      files: uploadedFiles,
+      isPaid: true, // Adjust this if integrating payment gateway
+      paidAt: new Date(),
+    });
+
+    // Notify Buyer
+    if (buyer?.email) {
+      const html = generateEmailTemplate({
+        firstName: buyer.firstName,
+        subject: "Order Placed Successfully",
+        content: `
+          <p>Hi ${buyer.firstName},</p>
+          <p>Your order for <strong>${gig.gigTitle}</strong> (${packageType} package) has been placed successfully.</p>
+          <p>We’ve notified the seller <strong>${seller.firstName}</strong> and work should begin shortly.</p>
+        `,
+      });
+
+      await transporter.sendMail({
+        from: `"Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        to: buyer.email,
+        subject: "Order Confirmation",
+        html,
+      });
+    }
+
+    // Notify Seller
+    if (seller?.email) {
+      const html = generateEmailTemplate({
+        firstName: seller.firstName,
+        subject: "New Order Received",
+        content: `
+          <p>Hello ${seller.firstName},</p>
+          <p>You’ve received a new order for <strong>${gig.gigTitle}</strong> (${packageType} package).</p>
+          <p>Please log in and start work as soon as possible.</p>
+        `,
+      });
+
+      await transporter.sendMail({
+        from: `"Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        to: seller.email,
+        subject: "You've Got a New Order",
+        html,
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Order placed successfully.",
+      order,
+    });
+
+  } catch (error) {
+    console.error("❌ Error in createOrder:", error);
+    next(error);
+  }
+};
