@@ -55,7 +55,7 @@ export const postMessage = async (req, res, next) => {
     await conversation.save();
 
     // 🔴 Trigger Pusher event for real-time updates
-    const channelName = `conversation-${conversation._id}`;
+    const channelName = 'marketplace';
     pusher.trigger(channelName, "new-message", {
       message: populatedMessage,
     });
