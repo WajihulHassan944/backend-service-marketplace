@@ -3,7 +3,7 @@ import { Conversation } from "../models/conversation.js";
 import { User } from "../models/user.js";
 import ErrorHandler from "../middlewares/error.js";
 import mongoose from "mongoose";
-
+import { pusher } from "../utils/pusher.js"; // Import Pusher instance
 
 export const postMessage = async (req, res, next) => {
   try {
@@ -39,7 +39,6 @@ export const postMessage = async (req, res, next) => {
       });
     }
 
-    // Create and then populate the new message
     const newMessage = await Message.create({
       conversationId: conversation._id,
       senderId,
@@ -47,7 +46,6 @@ export const postMessage = async (req, res, next) => {
       message,
     });
 
-    // Populate senderId and receiverId before sending response
     const populatedMessage = await Message.findById(newMessage._id)
       .populate("senderId", "firstName lastName profileUrl")
       .populate("receiverId", "firstName lastName profileUrl");
@@ -55,6 +53,12 @@ export const postMessage = async (req, res, next) => {
     conversation.lastMessage = message;
     conversation.lastUpdated = new Date();
     await conversation.save();
+
+    // 🔴 Trigger Pusher event for real-time updates
+    const channelName = `conversation-${conversation._id}`;
+    pusher.trigger(channelName, "new-message", {
+      message: populatedMessage,
+    });
 
     return res.status(201).json({
       success: true,
@@ -71,7 +75,6 @@ export const postMessage = async (req, res, next) => {
     return next(error);
   }
 };
-
 
 
 

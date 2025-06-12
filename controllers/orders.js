@@ -52,6 +52,10 @@ export const createOrder = async (req, res, next) => {
     const gig = await Gig.findById(gigId);
     if (!gig) return next(new ErrorHandler("Gig not found", 404));
 
+     if (gig.userId.toString() !== sellerId) {
+      return next(new ErrorHandler("Seller ID does not match the gig's owner", 403));
+    }
+
     const selectedPackage = gig.packages[packageType];
     if (!selectedPackage) return next(new ErrorHandler("Invalid package type", 400));
 
@@ -143,6 +147,135 @@ export const createOrder = async (req, res, next) => {
 
   } catch (error) {
     console.error("❌ Error in createOrder:", error);
+    next(error);
+  }
+};
+
+
+export const getOrdersByUser = async (req, res, next) => {
+  try {
+    const { userId, role } = req.params; // ✅ Fix here
+
+    if (!userId || !["buyer", "seller"].includes(role)) {
+      return next(new ErrorHandler("Invalid or missing user ID or role", 400));
+    }
+
+    const filter = role === "buyer" ? { buyerId: userId } : { sellerId: userId };
+
+    const orders = await Order.find(filter)
+      .populate("gigId", "gigTitle")
+      .populate("buyerId", "firstName lastName email")
+      .populate("sellerId", "firstName lastName email")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: orders.length,
+      orders,
+    });
+
+  } catch (error) {
+    console.error("❌ Error in getOrdersByUser:", error);
+    next(error);
+  }
+};
+
+
+
+export const getOrderById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const order = await Order.findById(id)
+      .populate("gigId", "gigTitle")
+      .populate("buyerId", "firstName lastName email")
+      .populate("sellerId", "firstName lastName email");
+
+    if (!order) {
+      return next(new ErrorHandler("Order not found", 404));
+    }
+
+    res.status(200).json({
+      success: true,
+      order,
+    });
+
+  } catch (error) {
+    console.error("❌ Error in getOrderById:", error);
+    next(error);
+  }
+};
+
+
+export const updateOrderStatus = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return next(new ErrorHandler("Status is required", 400));
+    }
+
+    const order = await Order.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    );
+
+    if (!order) {
+      return next(new ErrorHandler("Order not found", 404));
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Order status updated successfully.",
+      order,
+    });
+
+  } catch (error) {
+    console.error("❌ Error in updateOrderStatus:", error);
+    next(error);
+  }
+};
+
+
+
+export const deleteOrder = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return next(new ErrorHandler("Order not found", 404));
+    }
+
+    // Delete associated files from Cloudinary
+    if (order.files && order.files.length > 0) {
+      for (const file of order.files) {
+        if (file.public_id) {
+          try {
+            await cloudinary.uploader.destroy(file.public_id, {
+              resource_type: "auto", // handles image, video, raw (zip/pdf/etc.)
+            });
+          } catch (cloudErr) {
+            console.error(`⚠️ Cloudinary deletion failed for ${file.public_id}:`, cloudErr);
+            // Continue even if one file fails to delete
+          }
+        }
+      }
+    }
+
+    // Delete order from database
+    await Order.findByIdAndDelete(id);
+
+    res.status(200).json({
+      success: true,
+      message: "Order and associated files deleted successfully.",
+    });
+
+  } catch (error) {
+    console.error("❌ Error in deleteOrder:", error);
     next(error);
   }
 };
