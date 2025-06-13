@@ -77,7 +77,6 @@ export const createOrder = async (req, res, next) => {
       }
     }
 
-    // Create Order
     const order = await Order.create({
       gigId,
       buyerId,
@@ -163,7 +162,7 @@ export const getOrdersByUser = async (req, res, next) => {
     const filter = role === "buyer" ? { buyerId: userId } : { sellerId: userId };
 
     const orders = await Order.find(filter)
-      .populate("gigId", "gigTitle")
+      .populate("gigId")
       .populate("buyerId", "firstName lastName email")
       .populate("sellerId", "firstName lastName email")
       .sort({ createdAt: -1 });

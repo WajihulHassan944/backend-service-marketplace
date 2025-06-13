@@ -58,6 +58,10 @@ const orderSchema = new mongoose.Schema({
     ],
     message: String,
   },
+  deliveryDueDate: {
+  type: Date,
+},
+
   buyerReview: {
     rating: {
       type: Number,
@@ -92,6 +96,12 @@ const orderSchema = new mongoose.Schema({
 
 orderSchema.pre("save", function (next) {
   this.updatedAt = Date.now();
+
+  if (!this.deliveryDueDate && this.packageDetails?.deliveryTime) {
+    const deliveryDays = this.packageDetails.deliveryTime;
+    this.deliveryDueDate = new Date(this.createdAt.getTime() + deliveryDays * 24 * 60 * 60 * 1000);
+  }
+
   next();
 });
 
