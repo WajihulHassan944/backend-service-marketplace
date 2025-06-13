@@ -17,7 +17,7 @@ router.post("/create",  orderUpload.single("file"), createOrder);
 
 router.get("/user/:userId/:role",  getOrdersByUser);
 
-router.get("/prder-by-id/:id",  getOrderById);
+router.get("/order-by-id/:id",  getOrderById);
 
 router.put("/status/:id",  updateOrderStatus);
 
