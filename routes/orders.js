@@ -8,6 +8,7 @@ import {
   getOrderById,
   updateOrderStatus,
   deleteOrder,
+  getAllOrders,
 } from "../controllers/orders.js";
 
 const router = express.Router();
@@ -21,5 +22,7 @@ router.get("/:id",  getOrderById);
 router.put("/status/:id",  updateOrderStatus);
 
 router.delete("/delete/:id",  deleteOrder);
+
+router.get("/all", getAllOrders);
 
 export default router;

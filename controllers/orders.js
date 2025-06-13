@@ -179,6 +179,24 @@ export const getOrdersByUser = async (req, res, next) => {
   }
 };
 
+export const getAllOrders = async (req, res, next) => {
+  try {
+    const orders = await Order.find()
+      .populate("gigId")
+      .populate("buyerId", "firstName lastName email")
+      .populate("sellerId", "firstName lastName email")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: orders.length,
+      orders,
+    });
+  } catch (error) {
+    console.error("❌ Error in getAllOrders:", error);
+    next(error);
+  }
+};
 
 
 export const getOrderById = async (req, res, next) => {
