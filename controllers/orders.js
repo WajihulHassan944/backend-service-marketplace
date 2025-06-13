@@ -204,7 +204,7 @@ export const getOrderById = async (req, res, next) => {
     const { id } = req.params;
 
     const order = await Order.findById(id)
-      .populate("gigId", "gigTitle")
+      .populate("gigId")
       .populate("buyerId", "firstName lastName email")
       .populate("sellerId", "firstName lastName email");
 
