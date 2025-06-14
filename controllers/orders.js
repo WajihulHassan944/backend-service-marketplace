@@ -224,37 +224,6 @@ export const getOrderById = async (req, res, next) => {
 };
 
 
-export const updateOrderStatus = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-
-    if (!status) {
-      return next(new ErrorHandler("Status is required", 400));
-    }
-
-    const order = await Order.findByIdAndUpdate(
-      id,
-      { status },
-      { new: true }
-    );
-
-    if (!order) {
-      return next(new ErrorHandler("Order not found", 404));
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Order status updated successfully.",
-      order,
-    });
-
-  } catch (error) {
-    console.error("❌ Error in updateOrderStatus:", error);
-    next(error);
-  }
-};
-
 
 
 export const deleteOrder = async (req, res, next) => {
@@ -294,5 +263,155 @@ export const deleteOrder = async (req, res, next) => {
   } catch (error) {
     console.error("❌ Error in deleteOrder:", error);
     next(error);
+  }
+};
+
+
+
+
+
+
+
+
+export const deliverOrder = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    const { message } = req.body;
+
+    // Validate inputs
+    if (!orderId || !message) {
+      return next(new ErrorHandler("Order ID and message are required", 400));
+    }
+
+    const order = await Order.findById(orderId)
+      .populate("buyerId")
+      .populate("gigId");
+
+    if (!order) {
+      return next(new ErrorHandler("Order not found", 404));
+    }
+
+    if (order.status !== "in progress") {
+      return next(new ErrorHandler("Only orders in progress can be delivered", 400));
+    }
+
+    let deliveryFiles = [];
+
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const uploadResult = await uploadToCloudinary(file.buffer, file.originalname);
+        deliveryFiles.push(uploadResult);
+      }
+    }
+
+    order.delivery = {
+      files: deliveryFiles,
+      message,
+      deliveredAt: new Date(),
+    };
+
+    order.status = "delivered";
+    await order.save();
+
+    // Notify Buyer
+    const buyer = order.buyerId;
+    if (buyer?.email) {
+      const html = generateEmailTemplate({
+        firstName: buyer.firstName,
+        subject: "Your Order Has Been Delivered",
+        content: `
+          <p>Hi ${buyer.firstName},</p>
+          <p>Your seller has delivered the order for <strong>${order.gigId.gigTitle}</strong>.</p>
+          <p>Please log in to review and accept the delivery or request a revision.</p>
+        `,
+      });
+
+      await transporter.sendMail({
+        from: `"Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        to: buyer.email,
+        subject: "Order Delivered",
+        html,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Order delivered successfully.",
+      order,
+    });
+
+  } catch (error) {
+    console.error("❌ Error in deliverOrder:", error);
+    next(error);
+  }
+};
+
+
+
+// PATCH /api/orders/:orderId/buyer-review
+export const addBuyerReview = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    const { rating, review } = req.body;
+
+    if (!rating || rating < 1 || rating > 5) {
+      return next(new ErrorHandler("Rating must be between 1 and 5", 400));
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) return next(new ErrorHandler("Order not found", 404));
+
+    if (order.status !== "completed") {
+      return next(new ErrorHandler("Review can only be added after order is completed", 400));
+    }
+
+    if (order.buyerReview?.rating) {
+      return next(new ErrorHandler("Buyer has already submitted a review", 400));
+    }
+
+    order.buyerReview = { rating, review };
+    await order.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Buyer review submitted successfully.",
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+
+// PATCH /api/orders/:orderId/seller-review
+export const addSellerReview = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    const { rating, review } = req.body;
+
+    if (!rating || rating < 1 || rating > 5) {
+      return next(new ErrorHandler("Rating must be between 1 and 5", 400));
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) return next(new ErrorHandler("Order not found", 404));
+
+    if (order.status !== "completed") {
+      return next(new ErrorHandler("Review can only be added after order is completed", 400));
+    }
+
+    if (order.sellerReview?.rating) {
+      return next(new ErrorHandler("Seller has already submitted a review", 400));
+    }
+
+    order.sellerReview = { rating, review };
+    await order.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Seller review submitted successfully.",
+    });
+  } catch (err) {
+    next(err);
   }
 };

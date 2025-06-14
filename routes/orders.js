@@ -6,9 +6,11 @@ import {
   createOrder,
   getOrdersByUser,
   getOrderById,
-  updateOrderStatus,
   deleteOrder,
   getAllOrders,
+  deliverOrder,
+  addBuyerReview,
+  addSellerReview,
 } from "../controllers/orders.js";
 
 const router = express.Router();
@@ -19,10 +21,15 @@ router.get("/user/:userId/:role",  getOrdersByUser);
 
 router.get("/order-by-id/:id",  getOrderById);
 
-router.put("/status/:id",  updateOrderStatus);
 
 router.delete("/delete/:id",  deleteOrder);
 
 router.get("/all", getAllOrders);
+
+router.patch("/deliver/:orderId", orderUpload.single("file"), deliverOrder);
+
+router.patch("/buyer-review/:orderId", addBuyerReview);
+router.patch("/seller-review/:orderId", addSellerReview);
+
 
 export default router;
