@@ -62,15 +62,36 @@ const orderSchema = new mongoose.Schema({
   type: Date,
 },
 
-  buyerReview: {
-    rating: {
-      type: Number,
-      min: 1,
-      max: 5,
-    },
-    review: String,
+buyerReview: {
+  overallRating: {
+    type: Number,
+    min: 1,
+    max: 5,
   },
-  sellerReview: {
+  communicationLevel: {
+    type: Number,
+    min: 1,
+    max: 5,
+  },
+  serviceAsDescribed: {
+    type: Number,
+    min: 1,
+    max: 5,
+  },
+  recommendToFriend: {
+    type: Boolean,
+    default: false,
+  },
+  review: {
+    type: String,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+},
+  
+sellerReview: {
     rating: {
       type: Number,
       min: 1,

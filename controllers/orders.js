@@ -347,15 +347,30 @@ export const deliverOrder = async (req, res, next) => {
 };
 
 
-
 // PATCH /api/orders/:orderId/buyer-review
 export const addBuyerReview = async (req, res, next) => {
   try {
     const { orderId } = req.params;
-    const { rating, review } = req.body;
+    const {
+      overallRating,
+      communicationLevel,
+      serviceAsDescribed,
+      recommendToFriend,
+      review,
+    } = req.body;
 
-    if (!rating || rating < 1 || rating > 5) {
-      return next(new ErrorHandler("Rating must be between 1 and 5", 400));
+    if (
+      !overallRating ||
+      overallRating < 1 ||
+      overallRating > 5 ||
+      !communicationLevel ||
+      communicationLevel < 1 ||
+      communicationLevel > 5 ||
+      !serviceAsDescribed ||
+      serviceAsDescribed < 1 ||
+      serviceAsDescribed > 5
+    ) {
+      return next(new ErrorHandler("All ratings must be between 1 and 5", 400));
     }
 
     const order = await Order.findById(orderId);
@@ -365,11 +380,18 @@ export const addBuyerReview = async (req, res, next) => {
       return next(new ErrorHandler("Review can only be added after order is completed", 400));
     }
 
-    if (order.buyerReview?.rating) {
+    if (order.buyerReview?.overallRating) {
       return next(new ErrorHandler("Buyer has already submitted a review", 400));
     }
 
-    order.buyerReview = { rating, review };
+    order.buyerReview = {
+      overallRating,
+      communicationLevel,
+      serviceAsDescribed,
+      recommendToFriend: !!recommendToFriend, // Ensure boolean
+      review,
+    };
+
     await order.save();
 
     res.status(200).json({
@@ -380,7 +402,6 @@ export const addBuyerReview = async (req, res, next) => {
     next(err);
   }
 };
-
 
 
 // PATCH /api/orders/:orderId/seller-review
