@@ -577,6 +577,7 @@ export const inviteCoworkersToOrder = async (req, res, next) => {
   }
 };
 
+
 export const handleCoworkerResponse = async (req, res, next) => {
   try {
     const { orderId } = req.params;
@@ -586,7 +587,7 @@ export const handleCoworkerResponse = async (req, res, next) => {
       return next(new ErrorHandler("Invalid action", 400));
     }
 
-    const order = await Order.findById(orderId);
+    const order = await Order.findById(orderId).populate("buyerId sellerId gigId");
     if (!order) return next(new ErrorHandler("Order not found", 404));
 
     const coworker = order.coworkers.find(
@@ -597,11 +598,40 @@ export const handleCoworkerResponse = async (req, res, next) => {
       return next(new ErrorHandler("Coworker not found in this order", 404));
     }
 
-    coworker.status = action === "accept" ? "accepted" : "rejected";
+    // Only allow update if status is still "pending"
+    if (coworker.status !== "pending") {
+      return res.redirect("https://dotask-service-marketplace.vercel.app/login");
+    }
 
+    // Update status
+    coworker.status = action === "accept" ? "accepted" : "rejected";
     await order.save();
 
-    // Redirect after action
+    // Notify main seller
+    const coworkerUser = await User.findById(sellerId);
+    const mainSeller = order.sellerId;
+
+    if (mainSeller?.email) {
+      const html = generateEmailTemplate({
+        firstName: mainSeller.firstName,
+        subject: "Coworker Response Notification",
+        content: `
+          <p>Hello ${mainSeller.firstName},</p>
+          <p><strong>${coworkerUser?.firstName}</strong> has <strong style="text-transform:uppercase;">${action}ED</strong> your invitation to collaborate on the order for <strong>${order.gigId?.gigTitle}</strong>.</p>
+          <p>This was part of your order with the buyer <strong>${order.buyerId?.firstName}</strong>.</p>
+          <p>You may take further actions from your dashboard as needed.</p>
+        `,
+      });
+
+      await transporter.sendMail({
+        from: `"Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        to: mainSeller.email,
+        subject: `Coworker ${action === "accept" ? "Accepted" : "Rejected"} the Invitation`,
+        html,
+      });
+    }
+
+    // Redirect to login
     return res.redirect("https://dotask-service-marketplace.vercel.app/login");
 
   } catch (error) {
