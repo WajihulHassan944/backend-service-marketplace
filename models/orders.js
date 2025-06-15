@@ -113,6 +113,10 @@ sellerReview: {
     default: Date.now,
   },
   updatedAt: Date,
+  deliveryDueDate: {
+  type: Date,
+},
+
 });
 
 orderSchema.pre("save", function (next) {
