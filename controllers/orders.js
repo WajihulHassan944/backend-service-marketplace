@@ -278,7 +278,6 @@ export const deliverOrder = async (req, res, next) => {
     const { orderId } = req.params;
     const { message } = req.body;
 
-    // Validate inputs
     if (!orderId || !message) {
       return next(new ErrorHandler("Order ID and message are required", 400));
     }
@@ -291,14 +290,14 @@ export const deliverOrder = async (req, res, next) => {
       return next(new ErrorHandler("Order not found", 404));
     }
 
-
     let deliveryFiles = [];
 
-    if (req.files && req.files.length > 0) {
-      for (const file of req.files) {
-        const uploadResult = await uploadToCloudinary(file.buffer, file.originalname);
-        deliveryFiles.push(uploadResult);
-      }
+    // ✅ Console the uploaded file name
+    if (req.file) {
+      console.log("📁 Received file from frontend:", req.file.originalname);
+
+      const uploadResult = await uploadToCloudinary(req.file.buffer, req.file.originalname);
+      deliveryFiles.push(uploadResult);
     }
 
     order.delivery = {
@@ -310,6 +309,7 @@ export const deliverOrder = async (req, res, next) => {
     order.status = "delivered";
     await order.save();
 
+    
     // Notify Buyer
     const buyer = order.buyerId;
     if (buyer?.email) {
@@ -330,6 +330,8 @@ export const deliverOrder = async (req, res, next) => {
         html,
       });
     }
+
+    
 
     return res.status(200).json({
       success: true,
