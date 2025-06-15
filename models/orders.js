@@ -48,7 +48,8 @@ const orderSchema = new mongoose.Schema({
     enum: ["pending", "in progress", "delivered", "completed", "cancelled", "disputed"],
     default: "pending",
   },
-  delivery: {
+ deliveries: [
+  {
     deliveredAt: Date,
     files: [
       {
@@ -57,10 +58,8 @@ const orderSchema = new mongoose.Schema({
       },
     ],
     message: String,
-  },
-  deliveryDueDate: {
-  type: Date,
-},
+  }
+],
 
 buyerReview: {
   overallRating: {

@@ -272,7 +272,6 @@ export const deleteOrder = async (req, res, next) => {
 
 
 
-
 export const deliverOrder = async (req, res, next) => {
   try {
     const { orderId } = req.params;
@@ -292,24 +291,23 @@ export const deliverOrder = async (req, res, next) => {
 
     let deliveryFiles = [];
 
-    // ✅ Console the uploaded file name
     if (req.file) {
       console.log("📁 Received file from frontend:", req.file.originalname);
-
       const uploadResult = await uploadToCloudinary(req.file.buffer, req.file.originalname);
       deliveryFiles.push(uploadResult);
     }
 
-    order.delivery = {
+    // ⬇️ Push new delivery object to the deliveries array
+    order.deliveries = order.deliveries || [];
+    order.deliveries.push({
       files: deliveryFiles,
       message,
       deliveredAt: new Date(),
-    };
+    });
 
     order.status = "delivered";
     await order.save();
 
-    
     // Notify Buyer
     const buyer = order.buyerId;
     if (buyer?.email) {
@@ -330,8 +328,6 @@ export const deliverOrder = async (req, res, next) => {
         html,
       });
     }
-
-    
 
     return res.status(200).json({
       success: true,
