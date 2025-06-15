@@ -12,6 +12,8 @@ import {
   addBuyerReview,
   addSellerReview,
   approveFinalDelivery,
+  inviteCoworkersToOrder,
+  handleCoworkerResponse,
 } from "../controllers/orders.js";
 
 const router = express.Router();
@@ -34,6 +36,10 @@ router.patch("/buyer-review/:orderId", addBuyerReview);
 router.patch("/seller-review/:orderId", addSellerReview);
 
 router.post("/approve/:orderId", approveFinalDelivery);
+
+router.patch("/invite-coworkers/:orderId", inviteCoworkersToOrder);
+
+router.get("/response-to-cowork-action/:orderId/coworker-response", handleCoworkerResponse);
 
 
 export default router;

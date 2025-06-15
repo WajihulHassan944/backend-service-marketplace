@@ -484,3 +484,122 @@ export const addSellerReview = async (req, res, next) => {
     next(err);
   }
 };
+
+
+
+
+
+// PATCH /api/orders/:orderId/invite-coworkers
+
+export const inviteCoworkersToOrder = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    const { coworkers } = req.body;
+
+    if (!Array.isArray(coworkers) || coworkers.length === 0) {
+      return next(new ErrorHandler("At least one coworker must be provided.", 400));
+    }
+
+    const order = await Order.findById(orderId).populate("buyerId sellerId gigId");
+    if (!order) return next(new ErrorHandler("Order not found", 404));
+
+    for (const coworker of coworkers) {
+      const { sellerId, priceType, rate } = coworker;
+
+      if (!sellerId || !["hourly", "fixed"].includes(priceType) || typeof rate !== "number") {
+        return next(new ErrorHandler("Invalid coworker data format.", 400));
+      }
+
+      const user = await User.findById(sellerId);
+      if (!user || !user.role.includes("seller")) {
+        return next(new ErrorHandler(`Seller with ID ${sellerId} not found or invalid.`, 404));
+      }
+
+      // Add to order
+      order.coworkers.push({
+        sellerId,
+        priceType,
+        rate,
+        status: "pending",
+      });
+
+      if (user.email) {
+        const acceptUrl = `https://backend-service-marketplace.vercel.app/api/orders/response-to-cowork-action/${order._id}/coworker-response?sellerId=${sellerId}&action=accept`;
+        const rejectUrl = `https://backend-service-marketplace.vercel.app/api/orders/response-to-cowork-action/${order._id}/coworker-response?sellerId=${sellerId}&action=reject`;
+
+        const html = generateEmailTemplate({
+          firstName: user.firstName,
+          subject: "You've Been Invited to Collaborate on an Order",
+          content: `
+            <p>Hello ${user.firstName},</p>
+            <p>You’ve been invited by <strong>${order.sellerId.firstName}</strong> to collaborate on the order for <strong>${order.gigId.gigTitle}</strong>.</p>
+            <p><strong>Compensation:</strong> ${priceType === "hourly" ? `$${rate}/hr` : `$${rate} (fixed)`}</p>
+            <p>Please respond to this invitation:</p>
+            <div>
+              <a href="${acceptUrl}" style="background:#22c55e;color:#fff;padding:10px 16px;text-decoration:none;border-radius:6px;margin-right:10px;">
+                Accept
+              </a>
+              <a href="${rejectUrl}" style="background:#ef4444;color:#fff;padding:10px 16px;text-decoration:none;border-radius:6px;">
+                Reject
+              </a>
+            </div>
+          `,
+        });
+
+        await transporter.sendMail({
+          from: `"Marketplace" <${process.env.ADMIN_EMAIL}>`,
+          to: user.email,
+          subject: "Coworker Invitation",
+          html,
+        });
+      }
+    }
+
+    await order.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Coworker(s) invited successfully.",
+      order,
+    });
+
+  } catch (error) {
+    console.error("❌ Error inviting coworkers:", error);
+    next(error);
+  }
+};
+
+
+
+export const handleCoworkerResponse = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    const { sellerId, action } = req.query;
+
+    if (!["accept", "reject"].includes(action)) {
+      return next(new ErrorHandler("Invalid action", 400));
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) return next(new ErrorHandler("Order not found", 404));
+
+    const coworker = order.coworkers.find(
+      (c) => c.sellerId.toString() === sellerId
+    );
+
+    if (!coworker) {
+      return next(new ErrorHandler("Coworker not found in this order", 404));
+    }
+
+    coworker.status = action === "accept" ? "accepted" : "rejected";
+
+    await order.save();
+
+    // Redirect after action
+    return res.redirect("https://dotask-service-marketplace.vercel.app/login");
+
+  } catch (error) {
+    console.error("❌ Coworker response error:", error);
+    next(error);
+  }
+};

@@ -99,6 +99,30 @@ sellerReview: {
     },
     review: String,
   },
+coworkers: [
+  {
+    sellerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    priceType: {
+      type: String,
+      enum: ["hourly", "fixed"],
+      required: true,
+    },
+    rate: {
+      type: Number,
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ["pending", "accepted", "rejected"],
+      default: "pending",
+    }
+  }
+],
+
   isPaid: {
     type: Boolean,
     default: false,
