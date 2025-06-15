@@ -14,6 +14,7 @@ import {
   approveFinalDelivery,
   inviteCoworkersToOrder,
   handleCoworkerResponse,
+  getCoworkerOrders,
 } from "../controllers/orders.js";
 
 const router = express.Router();
@@ -40,6 +41,8 @@ router.post("/approve/:orderId", approveFinalDelivery);
 router.patch("/invite-coworkers/:orderId", inviteCoworkersToOrder);
 
 router.get("/response-to-cowork-action/:orderId/coworker-response", handleCoworkerResponse);
+
+router.get("/coworker-orders/:sellerId", getCoworkerOrders);
 
 
 export default router;

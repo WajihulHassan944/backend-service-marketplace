@@ -640,3 +640,60 @@ export const handleCoworkerResponse = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
+
+export const getCoworkerOrders = async (req, res) => {
+  try {
+    const { sellerId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(sellerId)) {
+      return res.status(400).json({ success: false, message: "Invalid seller ID" });
+    }
+
+    const orders = await Order.find({
+      "coworkers.sellerId": sellerId,
+    })
+      .populate("gigId", "gigTitle images")
+      .populate("sellerId", "firstName lastName")
+      .populate("coworkers.sellerId", "firstName lastName profileUrl");
+
+    const results = orders.map((order) => {
+      const coworker = order.coworkers.find(
+        (c) => c.sellerId?._id.toString() === sellerId
+      );
+      if (!coworker) return null;
+
+      return {
+        orderId: order._id.toString(),
+        gigTitle: order.gigId?.gigTitle || "Untitled Gig",
+        gigImage: order.gigId?.images?.[0]?.url || "/assets/gigs/default.png",
+        sellerName: `${order.sellerId?.firstName || ""} ${order.sellerId?.lastName || ""}`.trim(),
+        coworkerName: `${coworker.sellerId?.firstName || ""} ${coworker.sellerId?.lastName || ""}`.trim(),
+        coworkerProfile: coworker.sellerId?.profileUrl || "",
+        amount: `$${coworker.rate}`,
+        type: coworker.priceType === "hourly" ? "Hourly" : "Fixed",
+        maxHours: coworker.maxHours || null,
+        status: coworker.status,
+        isPaid: order.isPaid,
+        paidAt: order.paidAt,
+        deliveryDueDate: order.deliveryDueDate,
+        createdAt: order.createdAt,
+      };
+    }).filter(Boolean);
+
+    return res.status(200).json({
+      success: true,
+      count: results.length,
+      orders: results,
+    });
+
+  } catch (error) {
+    console.error("❌ getCoworkerOrders error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
