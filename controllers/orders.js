@@ -291,7 +291,7 @@ export const deliverOrder = async (req, res, next) => {
       return next(new ErrorHandler("Order not found", 404));
     }
 
-    if (order.status !== "in progress") {
+    if (order.status !== "in progress" || order.status !== "pending") {
       return next(new ErrorHandler("Only orders in progress can be delivered", 400));
     }
 
