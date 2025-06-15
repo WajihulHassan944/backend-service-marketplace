@@ -490,7 +490,6 @@ export const addSellerReview = async (req, res, next) => {
 
 
 // PATCH /api/orders/:orderId/invite-coworkers
-
 export const inviteCoworkersToOrder = async (req, res, next) => {
   try {
     const { orderId } = req.params;
@@ -504,10 +503,14 @@ export const inviteCoworkersToOrder = async (req, res, next) => {
     if (!order) return next(new ErrorHandler("Order not found", 404));
 
     for (const coworker of coworkers) {
-      const { sellerId, priceType, rate } = coworker;
+      const { sellerId, priceType, rate, maxHours } = coworker;
 
       if (!sellerId || !["hourly", "fixed"].includes(priceType) || typeof rate !== "number") {
         return next(new ErrorHandler("Invalid coworker data format.", 400));
+      }
+
+      if (priceType === "hourly" && (typeof maxHours !== "number" || maxHours <= 0)) {
+        return next(new ErrorHandler("Hourly coworker must have a valid maxHours.", 400));
       }
 
       const user = await User.findById(sellerId);
@@ -520,6 +523,7 @@ export const inviteCoworkersToOrder = async (req, res, next) => {
         sellerId,
         priceType,
         rate,
+        maxHours: priceType === "hourly" ? maxHours : undefined,
         status: "pending",
       });
 
@@ -533,7 +537,11 @@ export const inviteCoworkersToOrder = async (req, res, next) => {
           content: `
             <p>Hello ${user.firstName},</p>
             <p>You’ve been invited by <strong>${order.sellerId.firstName}</strong> to collaborate on the order for <strong>${order.gigId.gigTitle}</strong>.</p>
-            <p><strong>Compensation:</strong> ${priceType === "hourly" ? `$${rate}/hr` : `$${rate} (fixed)`}</p>
+            <p><strong>Compensation:</strong> ${
+              priceType === "hourly" 
+              ? `$${rate}/hr for up to ${maxHours} hour(s)` 
+              : `$${rate} (fixed)`
+            }</p>
             <p>Please respond to this invitation:</p>
             <div>
               <a href="${acceptUrl}" style="background:#22c55e;color:#fff;padding:10px 16px;text-decoration:none;border-radius:6px;margin-right:10px;">
@@ -568,8 +576,6 @@ export const inviteCoworkersToOrder = async (req, res, next) => {
     next(error);
   }
 };
-
-
 
 export const handleCoworkerResponse = async (req, res, next) => {
   try {

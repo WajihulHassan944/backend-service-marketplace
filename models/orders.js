@@ -99,7 +99,7 @@ sellerReview: {
     },
     review: String,
   },
-coworkers: [
+coworkers: [ 
   {
     sellerId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -114,6 +114,12 @@ coworkers: [
     rate: {
       type: Number,
       required: true,
+    },
+    maxHours: {
+      type: Number,
+      required: function () {
+        return this.priceType === "hourly";
+      }
     },
     status: {
       type: String,
