@@ -648,10 +648,7 @@ export const getCoworkerOrders = async (req, res) => {
   try {
     const { sellerId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(sellerId)) {
-      return res.status(400).json({ success: false, message: "Invalid seller ID" });
-    }
-
+   
     const orders = await Order.find({
       "coworkers.sellerId": sellerId,
     })
