@@ -769,3 +769,18 @@ export const getUserById = async (req, res, next) => {
     next(error);
   }
 };
+
+
+export const allAvailableSellers = async (req, res, next) => {
+  try {
+    const sellers = await User.find({ role: { $in: ["seller"] } })
+      .select("firstName lastName profileUrl _id");
+
+    res.status(200).json({
+      success: true,
+      data: sellers,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
