@@ -78,8 +78,9 @@ buyerReview: {
     max: 5,
   },
   recommendToFriend: {
-    type: Boolean,
-    default: false,
+    type: Number,
+    min: 1,
+    max: 5,
   },
   review: {
     type: String,

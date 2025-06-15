@@ -396,7 +396,6 @@ export const approveFinalDelivery = async (req, res, next) => {
   }
 };
 
-
 // PATCH /api/orders/:orderId/buyer-review
 export const addBuyerReview = async (req, res, next) => {
   try {
@@ -409,16 +408,16 @@ export const addBuyerReview = async (req, res, next) => {
       review,
     } = req.body;
 
+    // Validate all ratings
     if (
       !overallRating ||
-      overallRating < 1 ||
-      overallRating > 5 ||
+      overallRating < 1 || overallRating > 5 ||
       !communicationLevel ||
-      communicationLevel < 1 ||
-      communicationLevel > 5 ||
+      communicationLevel < 1 || communicationLevel > 5 ||
       !serviceAsDescribed ||
-      serviceAsDescribed < 1 ||
-      serviceAsDescribed > 5
+      serviceAsDescribed < 1 || serviceAsDescribed > 5 ||
+      !recommendToFriend ||
+      recommendToFriend < 1 || recommendToFriend > 5
     ) {
       return next(new ErrorHandler("All ratings must be between 1 and 5", 400));
     }
@@ -438,7 +437,7 @@ export const addBuyerReview = async (req, res, next) => {
       overallRating,
       communicationLevel,
       serviceAsDescribed,
-      recommendToFriend: !!recommendToFriend, // Ensure boolean
+      recommendToFriend, // store number as-is now
       review,
     };
 
@@ -452,7 +451,6 @@ export const addBuyerReview = async (req, res, next) => {
     next(err);
   }
 };
-
 
 // PATCH /api/orders/:orderId/seller-review
 export const addSellerReview = async (req, res, next) => {
