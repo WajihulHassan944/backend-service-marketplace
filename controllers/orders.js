@@ -489,7 +489,6 @@ export const addSellerReview = async (req, res, next) => {
 
 
 
-
 // PATCH /api/orders/:orderId/invite-coworkers
 export const inviteCoworkersToOrder = async (req, res, next) => {
   try {
@@ -519,15 +518,39 @@ export const inviteCoworkersToOrder = async (req, res, next) => {
         return next(new ErrorHandler(`Seller with ID ${sellerId} not found or invalid.`, 404));
       }
 
-      // Add to order
-      order.coworkers.push({
-        sellerId,
-        priceType,
-        rate,
-        maxHours: priceType === "hourly" ? maxHours : undefined,
-        status: "pending",
-      });
+      // Check if this seller is already invited
+      const existingIndex = order.coworkers.findIndex(
+        (c) => c.sellerId.toString() === sellerId
+      );
 
+      if (existingIndex !== -1) {
+        const existing = order.coworkers[existingIndex];
+
+        if (existing.status === "rejected") {
+          // Overwrite the rejected one
+          order.coworkers[existingIndex] = {
+            sellerId,
+            priceType,
+            rate,
+            maxHours: priceType === "hourly" ? maxHours : undefined,
+            status: "pending",
+          };
+        } else {
+          // Already exists and not rejected, skip adding again
+          continue;
+        }
+      } else {
+        // Not invited before, so add
+        order.coworkers.push({
+          sellerId,
+          priceType,
+          rate,
+          maxHours: priceType === "hourly" ? maxHours : undefined,
+          status: "pending",
+        });
+      }
+
+      // Send invite email
       if (user.email) {
         const acceptUrl = `https://backend-service-marketplace.vercel.app/api/orders/response-to-cowork-action/${order._id}/coworker-response?sellerId=${sellerId}&action=accept`;
         const rejectUrl = `https://backend-service-marketplace.vercel.app/api/orders/response-to-cowork-action/${order._id}/coworker-response?sellerId=${sellerId}&action=reject`;
@@ -601,7 +624,9 @@ export const handleCoworkerResponse = async (req, res, next) => {
 
     // Only allow update if status is still "pending"
     if (coworker.status !== "pending") {
-      return res.redirect("https://dotask-service-marketplace.vercel.app/login");
+      return req.headers.accept?.includes("application/json")
+        ? res.status(200).json({ success: false, message: "Already responded." })
+        : res.redirect("https://dotask-service-marketplace.vercel.app/login");
     }
 
     // Update status
@@ -632,8 +657,18 @@ export const handleCoworkerResponse = async (req, res, next) => {
       });
     }
 
-    // Redirect to login
-    return res.redirect("https://dotask-service-marketplace.vercel.app/login");
+    // ➤ Handle based on request type
+    if (req.headers.accept?.includes("application/json")) {
+      // If it's an API call from frontend (e.g. fetch)
+      return res.status(200).json({
+        success: true,
+        message: `Invitation ${action}ed successfully`,
+        status: coworker.status,
+      });
+    } else {
+      // If it's from email (browser hit)
+      return res.redirect("https://dotask-service-marketplace.vercel.app/login");
+    }
 
   } catch (error) {
     console.error("❌ Coworker response error:", error);
