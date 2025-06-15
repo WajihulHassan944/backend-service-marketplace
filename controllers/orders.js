@@ -342,6 +342,61 @@ export const deliverOrder = async (req, res, next) => {
 };
 
 
+
+export const approveFinalDelivery = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+
+    if (!orderId) {
+      return next(new ErrorHandler("Order ID is required", 400));
+    }
+
+    const order = await Order.findById(orderId)
+      .populate("sellerId")
+      .populate("gigId");
+
+    if (!order) {
+      return next(new ErrorHandler("Order not found", 404));
+    }
+
+    // Mark order as completed
+    order.status = "completed";
+    await order.save();
+
+    // Notify Seller
+    const seller = order.sellerId;
+    if (seller?.email) {
+      const html = generateEmailTemplate({
+        firstName: seller.firstName,
+        subject: "Your Order Has Been Approved",
+        content: `
+          <p>Hi ${seller.firstName},</p>
+          <p>The buyer has approved your final delivery for <strong>${order.gigId.gigTitle}</strong>.</p>
+          <p>The order has now been marked as <strong>completed</strong>.</p>
+        `,
+      });
+
+      await transporter.sendMail({
+        from: `"Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        to: seller.email,
+        subject: "Order Completed",
+        html,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Final delivery approved. Order marked as completed.",
+      order,
+    });
+
+  } catch (error) {
+    console.error("❌ Error in approveFinalDelivery:", error);
+    next(error);
+  }
+};
+
+
 // PATCH /api/orders/:orderId/buyer-review
 export const addBuyerReview = async (req, res, next) => {
   try {

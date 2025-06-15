@@ -11,6 +11,7 @@ import {
   deliverOrder,
   addBuyerReview,
   addSellerReview,
+  approveFinalDelivery,
 } from "../controllers/orders.js";
 
 const router = express.Router();
@@ -29,7 +30,10 @@ router.get("/all", getAllOrders);
 router.patch("/deliver/:orderId", orderUpload.single("file"), deliverOrder);
 
 router.patch("/buyer-review/:orderId", addBuyerReview);
+
 router.patch("/seller-review/:orderId", addSellerReview);
+
+router.post("/approve/:orderId", approveFinalDelivery);
 
 
 export default router;
