@@ -206,7 +206,8 @@ export const getOrderById = async (req, res, next) => {
     const order = await Order.findById(id)
       .populate("gigId")
       .populate("buyerId", "firstName lastName email")
-      .populate("sellerId", "firstName lastName email");
+      .populate("sellerId", "firstName lastName email")
+      .populate("coworkers.sellerId", "firstName lastName email profileUrl _id");
 
     if (!order) {
       return next(new ErrorHandler("Order not found", 404));
