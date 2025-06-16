@@ -46,8 +46,8 @@ router.get("/response-to-cowork-action/:orderId/coworker-response", handleCowork
 
 router.get("/coworker-orders/:sellerId", getCoworkerOrders);
 
-router.post("/:orderId/resolution", raiseResolutionRequest);
-router.get("/api/orders/:orderId/resolution-response", respondToResolutionRequest);
+router.post("/resolution/:orderId", raiseResolutionRequest);
+router.get("/resolution-response/:orderId", respondToResolutionRequest);
 
 
 export default router;

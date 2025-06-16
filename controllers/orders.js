@@ -809,11 +809,11 @@ if (seller?.email) {
       ${resolutionInfo}
       <p>Please choose one of the following actions:</p>
       <p style="margin-top: 16px;">
-        <a href="https://backend-service-marketplace.vercel.app/resolution-action?orderId=${order._id}&action=accept&sellerId=${seller._id}"
+        <a href="https://backend-service-marketplace.vercel.app/api/orders/resolution-response/${order._id}?action=accept&sellerId=${seller._id}"
            style="padding: 10px 20px; background-color: #28a745; color: #fff; text-decoration: none; border-radius: 5px; margin-right: 10px;">
            Accept Request
         </a>
-        <a href="https://backend-service-marketplace.vercel.app/resolution-action?orderId=${order._id}&action=reject&sellerId=${seller._id}"
+        <a href="https://backend-service-marketplace.vercel.app/api/orders/resolution-response/${order._id}?action=reject&sellerId=${seller._id}"
            style="padding: 10px 20px; background-color: #dc3545; color: #fff; text-decoration: none; border-radius: 5px;">
            Reject Request
         </a>
