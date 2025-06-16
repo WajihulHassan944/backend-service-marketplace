@@ -953,3 +953,42 @@ export const respondToResolutionRequest = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
+// controllers/orderController.js
+export const getDisputedOrders = async (req, res, next) => {
+  try {
+    const disputedOrders = await Order.find({ status: "disputed" })
+      .populate("buyerId", "firstName email country")
+      .populate("sellerId", "firstName email country")
+      .sort({ "resolutionRequest.requestedAt": -1 });
+
+    const formatted = disputedOrders.map((order) => {
+      const { resolutionRequest, totalAmount, buyerId, sellerId } = order;
+      const countryOfDisputer =
+        resolutionRequest?.requestedBy?.toString() === buyerId._id.toString()
+          ? buyerId.country
+          : sellerId.country;
+
+      return {
+        _id: order._id,
+        status: order.status,
+        totalAmount,
+        resolutionRequest,
+        countryOfDisputer,
+        buyer: buyerId,
+        seller: sellerId,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      count: formatted.length,
+      disputedOrders: formatted,
+    });
+  } catch (err) {
+    console.error("❌ getDisputedOrders error:", err);
+    next(err);
+  }
+};
