@@ -746,7 +746,11 @@ export const raiseResolutionRequest = async (req, res, next) => {
 
     if (!order) return next(new ErrorHandler("Order not found", 404));
 
-   
+    // Check if a resolution has already been raised
+    if (order.resolutionRequest && order.resolutionRequest.status === "open") {
+      return next(new ErrorHandler("Resolution request already exists for this order", 400));
+    }
+
     // Update resolutionRequest
     order.resolutionRequest = {
       reason,

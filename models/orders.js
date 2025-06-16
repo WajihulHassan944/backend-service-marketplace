@@ -143,8 +143,7 @@ resolutionRequest: {
   status: {
   type: String,
   enum: ["open", "resolved", "rejected"],
-  default: "open",
-},
+ },
   message: {
     type: String,
     required: true,
