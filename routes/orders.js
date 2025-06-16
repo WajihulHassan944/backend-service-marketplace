@@ -15,6 +15,8 @@ import {
   inviteCoworkersToOrder,
   handleCoworkerResponse,
   getCoworkerOrders,
+  raiseResolutionRequest,
+  respondToResolutionRequest,
 } from "../controllers/orders.js";
 
 const router = express.Router();
@@ -43,6 +45,9 @@ router.patch("/invite-coworkers/:orderId", inviteCoworkersToOrder);
 router.get("/response-to-cowork-action/:orderId/coworker-response", handleCoworkerResponse);
 
 router.get("/coworker-orders/:sellerId", getCoworkerOrders);
+
+router.post("/:orderId/resolution", raiseResolutionRequest);
+router.get("/api/orders/:orderId/resolution-response", respondToResolutionRequest);
 
 
 export default router;

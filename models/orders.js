@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { Counter } from "./counter.js";
 
 const orderSchema = new mongoose.Schema({
   gigId: {
@@ -129,7 +130,53 @@ coworkers: [
   }
 ],
 
-  isPaid: {
+resolutionRequest: {
+  ticketId: {
+    type: String,
+    unique: true,
+    sparse: true, 
+  },
+  reason: {
+    type: String,
+    enum: ["delayed", "not-responding", "poor-quality", "other"],
+    required: true,
+  },
+  status: {
+  type: String,
+  enum: ["open", "resolved", "rejected"],
+  default: "open",
+},
+  message: {
+    type: String,
+    required: true,
+    maxlength: 500,
+  },
+  requestedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
+  requestedAt: {
+    type: Date,
+    default: Date.now,
+  },
+  status: {
+    type: String,
+    enum: ["open", "resolved", "rejected"],
+    default: "open",
+  },
+  adminResponse: {
+    type: String,
+  },
+  respondedBy: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "User",
+},
+  resolvedAt: Date,
+},
+
+
+isPaid: {
     type: Boolean,
     default: false,
   },
@@ -149,14 +196,26 @@ coworkers: [
 
 });
 
-orderSchema.pre("save", function (next) {
+orderSchema.pre("save", async function (next) {
   this.updatedAt = Date.now();
 
   if (!this.deliveryDueDate && this.packageDetails?.deliveryTime) {
     const deliveryDays = this.packageDetails.deliveryTime;
     this.deliveryDueDate = new Date(this.createdAt.getTime() + deliveryDays * 24 * 60 * 60 * 1000);
   }
+ if (
+    this.isModified("resolutionRequest") &&
+    this.resolutionRequest &&
+    !this.resolutionRequest.ticketId
+  ) {
+    const counter = await Counter.findOneAndUpdate(
+      { name: "resolutionTicket" },
+      { $inc: { value: 1 } },
+      { new: true, upsert: true }
+    );
 
+    this.resolutionRequest.ticketId = `RSL-${counter.value}`;
+  }
   next();
 });
 

@@ -722,10 +722,223 @@ export const getCoworkerOrders = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ getCoworkerOrders error:", error);
+    console.error("getCoworkerOrders error:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
     });
+  }
+};
+
+
+export const raiseResolutionRequest = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    const { reason, message, requestedBy } = req.body;
+
+    if (!orderId || !reason || !message || !requestedBy) {
+      return next(new ErrorHandler("Missing required fields", 400));
+    }
+
+    const order = await Order.findById(orderId)
+      .populate("buyerId", "firstName email")
+      .populate("sellerId", "firstName email");
+
+    if (!order) return next(new ErrorHandler("Order not found", 404));
+
+    // Check if a resolution has already been raised
+    if (order.resolutionRequest && order.resolutionRequest.status === "open") {
+      return next(new ErrorHandler("Resolution request already exists for this order", 400));
+    }
+
+    // Update resolutionRequest
+    order.resolutionRequest = {
+      reason,
+      message,
+      requestedBy,
+      requestedAt: new Date(),
+      status: "open",
+    };
+
+    // Change order status to disputed
+    order.status = "disputed";
+
+    // Save to trigger pre-save middleware for ticketId
+    await order.save();
+
+    const buyer = order.buyerId;
+    const seller = order.sellerId;
+
+    // Email content
+    const subject = `Resolution Ticket Raised for Order ID ${order._id}`;
+    const resolutionInfo = `
+      <p><strong>Reason:</strong> ${reason}</p>
+      <p><strong>Message:</strong> ${message}</p>
+      <p><strong>Ticket ID:</strong> ${order.resolutionRequest.ticketId}</p>
+    `;
+
+    // Notify Buyer
+    if (buyer?.email) {
+      const html = generateEmailTemplate({
+        firstName: buyer.firstName,
+        subject,
+        content: `
+          <p>Dear ${buyer.firstName},</p>
+          <p>A resolution request has been initiated on your order.</p>
+          ${resolutionInfo}
+          <p>We’ll get back to you after reviewing the case.</p>
+        `,
+      });
+
+      await transporter.sendMail({
+        from: `"Marketplace Support" <${process.env.ADMIN_EMAIL}>`,
+        to: buyer.email,
+        subject,
+        html,
+      });
+    }
+
+    // Notify Seller
+if (seller?.email) {
+  const html = generateEmailTemplate({
+    firstName: seller.firstName,
+    subject,
+    content: `
+      <p>Dear ${seller.firstName},</p>
+      <p>A resolution request has been raised by the buyer for your order.</p>
+      ${resolutionInfo}
+      <p>Please choose one of the following actions:</p>
+      <p style="margin-top: 16px;">
+        <a href="https://backend-service-marketplace.vercel.app/resolution-action?orderId=${order._id}&action=accept&sellerId=${seller._id}"
+           style="padding: 10px 20px; background-color: #28a745; color: #fff; text-decoration: none; border-radius: 5px; margin-right: 10px;">
+           Accept Request
+        </a>
+        <a href="https://backend-service-marketplace.vercel.app/resolution-action?orderId=${order._id}&action=reject&sellerId=${seller._id}"
+           style="padding: 10px 20px; background-color: #dc3545; color: #fff; text-decoration: none; border-radius: 5px;">
+           Reject Request
+        </a>
+      </p>
+      <p>If you do not take any action, the support team will manually review and resolve this case.</p>
+    `,
+  });
+
+  await transporter.sendMail({
+    from: `"Marketplace Support" <${process.env.ADMIN_EMAIL}>`,
+    to: seller.email,
+    subject,
+    html,
+  });
+}
+
+
+    return res.status(200).json({
+      success: true,
+      message: "Resolution request submitted and both parties notified.",
+      resolution: order.resolutionRequest,
+    });
+
+  } catch (error) {
+    console.error("❌ Error in raiseResolutionRequest:", error);
+    next(error);
+  }
+};
+
+export const respondToResolutionRequest = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+   const { sellerId, action } = req.query;
+
+    if (!orderId || !sellerId || !["accept", "reject"].includes(action)) {
+      return next(new ErrorHandler("Invalid input", 400));
+    }
+
+    const order = await Order.findById(orderId)
+      .populate("buyerId", "firstName email")
+      .populate("sellerId", "firstName email");
+
+    if (!order) return next(new ErrorHandler("Order not found", 404));
+
+    // Ensure only the correct seller is responding
+    if (order.sellerId._id.toString() !== sellerId) {
+      return next(new ErrorHandler("You are not authorized to respond to this resolution", 403));
+    }
+
+    if (!order.resolutionRequest || order.resolutionRequest.status !== "open") {
+      return next(new ErrorHandler("No active resolution request found", 400));
+    }
+
+    // Update resolution request based on seller action
+    order.resolutionRequest.status = action === "accept" ? "resolved" : "rejected";
+    order.resolutionRequest.respondedBy = sellerId;
+    order.resolutionRequest.resolvedAt = new Date();
+    order.resolutionRequest.adminResponse = action === "accept"
+      ? "Seller accepted the resolution request"
+      : "Seller rejected the resolution request";
+
+    // Update order status
+    order.status = action === "accept" ? "cancelled" : "pending";
+
+    await order.save();
+
+    const buyer = order.buyerId;
+    const seller = order.sellerId;
+
+    const subject = `Resolution Request ${action === "accept" ? "Accepted" : "Rejected"} by Seller`;
+    const emailContent = `
+      <p>Order ID: ${order._id}</p>
+      <p><strong>Ticket:</strong> ${order.resolutionRequest.ticketId}</p>
+      <p><strong>Status:</strong> ${order.resolutionRequest.status}</p>
+      <p><strong>Seller's Action:</strong> ${action === "accept" ? "Accepted and order cancelled" : "Rejected"}</p>
+    `;
+
+    // Notify Buyer
+    if (buyer?.email) {
+      const html = generateEmailTemplate({
+        firstName: buyer.firstName,
+        subject,
+        content: `
+          <p>Dear ${buyer.firstName},</p>
+          <p>The seller has <strong>${action === "accept" ? "accepted" : "rejected"}</strong> your resolution request.</p>
+          ${emailContent}
+        `,
+      });
+
+      await transporter.sendMail({
+        from: `"Marketplace Support" <${process.env.ADMIN_EMAIL}>`,
+        to: buyer.email,
+        subject,
+        html,
+      });
+    }
+
+    // Optional: Notify seller as confirmation
+    if (seller?.email) {
+      const html = generateEmailTemplate({
+        firstName: seller.firstName,
+        subject: "You have responded to a resolution request",
+        content: `
+          <p>Dear ${seller.firstName},</p>
+          <p>You have successfully <strong>${action}</strong>ed the resolution request for order <strong>${order._id}</strong>.</p>
+        `,
+      });
+
+      await transporter.sendMail({
+        from: `"Marketplace Support" <${process.env.ADMIN_EMAIL}>`,
+        to: seller.email,
+        subject: "Resolution Request Response Confirmed",
+        html,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Resolution ${action}ed successfully.`,
+      orderStatus: order.status,
+      resolution: order.resolutionRequest,
+    });
+
+  } catch (error) {
+    console.error("❌ Error in respondToResolutionRequest:", error);
+    next(error);
   }
 };
