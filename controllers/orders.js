@@ -959,7 +959,11 @@ export const respondToResolutionRequest = async (req, res, next) => {
 // controllers/orderController.js
 export const getDisputedOrders = async (req, res, next) => {
   try {
-    const disputedOrders = await Order.find({ status: "disputed" })
+    const disputedOrders = await Order.find({
+      "resolutionRequest.reason": { $exists: true, $ne: "" },
+      "resolutionRequest.message": { $exists: true, $ne: "" },
+      "resolutionRequest.ticketId": { $exists: true, $ne: "" },
+    })
       .populate("buyerId", "firstName email country")
       .populate("sellerId", "firstName email country")
       .sort({ "resolutionRequest.requestedAt": -1 });
