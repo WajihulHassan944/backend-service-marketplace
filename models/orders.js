@@ -138,7 +138,6 @@ resolutionRequest: {
   },
   reason: {
     type: String,
-    enum: ["delayed", "not-responding", "poor-quality", "other"],
     required: true,
   },
   status: {
