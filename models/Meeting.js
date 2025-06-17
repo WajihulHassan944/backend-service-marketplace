@@ -8,14 +8,17 @@ const meetingSchema = new mongoose.Schema({
   join_url: String,
   start_url: String,
   password: String,
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-  },
-  participant: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-  },
+ createdBy: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "User",
+  required: true,
+},
+participant: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "User",
+  required: true,
+},
+
   createdAt: {
     type: Date,
     default: Date.now,
