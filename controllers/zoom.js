@@ -6,7 +6,7 @@ import { transporter } from '../utils/mailer.js';
 import generateEmailTemplate from "../utils/emailTemplate.js";
 
 export const createZoomMeeting = async (req, res) => {
-  const { topic = "My Zoom Meeting", duration, userId, participantId } = req.body;
+  const { topic, duration, userId, participantId } = req.body;
 
   try {
     const token = await getZoomAccessToken();
@@ -45,7 +45,17 @@ export const createZoomMeeting = async (req, res) => {
       createdBy: userId,
       participant: participantId,
     });
-
+ console.log("📌 Meeting Created:");
+    console.log("👤 Host:", {
+      id: creator?._id,
+      name: `${creator?.firstName} ${creator?.lastName}`,
+      email: creator?.email,
+    });
+    console.log("👥 Participant:", {
+      id: receiver?._id,
+      name: `${receiver?.firstName} ${receiver?.lastName}`,
+      email: receiver?.email,
+    });
     // Notify both users
     const [creator, receiver] = await Promise.all([
       User.findById(userId),
