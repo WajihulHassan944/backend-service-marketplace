@@ -19,7 +19,7 @@ export const createZoomMeeting = async (req, res) => {
       },
       body: JSON.stringify({
         topic,
-        type: 1,
+        type: 1, // Instant meeting
         duration,
         settings: {
           join_before_host: true,
@@ -45,7 +45,13 @@ export const createZoomMeeting = async (req, res) => {
       createdBy: userId,
       participant: participantId,
     });
- console.log("📌 Meeting Created:");
+
+    // Fetch users individually (before using them)
+    const creator = await User.findById(userId);
+    const receiver = await User.findById(participantId);
+
+    // Now safe to log
+    console.log("📌 Meeting Created:");
     console.log("👤 Host:", {
       id: creator?._id,
       name: `${creator?.firstName} ${creator?.lastName}`,
@@ -56,12 +62,8 @@ export const createZoomMeeting = async (req, res) => {
       name: `${receiver?.firstName} ${receiver?.lastName}`,
       email: receiver?.email,
     });
-    // Notify both users
-    const [creator, receiver] = await Promise.all([
-      User.findById(userId),
-      User.findById(participantId),
-    ]);
 
+    // Email setup
     const subject = `Zoom Meeting Scheduled: ${topic}`;
     const emailContent = (user, role) => `
       <p>Dear ${user.firstName},</p>
@@ -100,14 +102,14 @@ export const createZoomMeeting = async (req, res) => {
 
     res.status(201).json(savedMeeting);
   } catch (err) {
-    console.error("Meeting error:", err);
+    console.error("❌ Meeting error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 };
 
 export const deleteZoomMeeting = async (req, res) => {
   const { meetingId } = req.params;
-  const userId = req.user?._id || req.body.userId;
+  const userId = req.body.userId;
 
   try {
     const meeting = await Meeting.findOne({ meeting_id: meetingId, createdBy: userId });
