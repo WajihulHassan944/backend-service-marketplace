@@ -1,3 +1,4 @@
+// models/Meeting.js
 import mongoose from 'mongoose';
 
 const meetingSchema = new mongoose.Schema({
@@ -7,6 +8,10 @@ const meetingSchema = new mongoose.Schema({
   start_url: String,
   password: String,
   createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+  },
+  participant: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
   },

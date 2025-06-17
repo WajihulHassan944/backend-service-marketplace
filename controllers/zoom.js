@@ -1,10 +1,12 @@
 import fetch from 'node-fetch';
-import { getZoomAccessToken } from '../utils/zoom.js';
 import { Meeting } from '../models/Meeting.js';
+import { User } from "../models/user.js"
+import { getZoomAccessToken } from '../utils/zoom.js';
+import { transporter } from '../utils/mailer.js';
+import generateEmailTemplate from "../utils/emailTemplate.js";
 
 export const createZoomMeeting = async (req, res) => {
-  const { topic = "My Zoom Meeting", duration = 30 } = req.body;
-  const userId = req.user?._id || req.body.userId; // Use from auth middleware or manually passed
+  const { topic = "My Zoom Meeting", duration, userId, participantId } = req.body;
 
   try {
     const token = await getZoomAccessToken();
@@ -17,7 +19,7 @@ export const createZoomMeeting = async (req, res) => {
       },
       body: JSON.stringify({
         topic,
-        type: 1, // Instant meeting
+        type: 1,
         duration,
         settings: {
           join_before_host: true,
@@ -33,7 +35,7 @@ export const createZoomMeeting = async (req, res) => {
 
     const data = await zoomRes.json();
 
-    // Save to MongoDB
+    // Save to DB
     const savedMeeting = await Meeting.create({
       topic,
       meeting_id: data.id,
@@ -41,25 +43,55 @@ export const createZoomMeeting = async (req, res) => {
       start_url: data.start_url,
       password: data.password,
       createdBy: userId,
+      participant: participantId,
     });
+
+    // Notify both users
+    const [creator, receiver] = await Promise.all([
+      User.findById(userId),
+      User.findById(participantId),
+    ]);
+
+    const subject = `Zoom Meeting Scheduled: ${topic}`;
+    const emailContent = (user, role) => `
+      <p>Dear ${user.firstName},</p>
+      <p>A new Zoom meeting has been scheduled where you are the <strong>${role}</strong>.</p>
+      <p><strong>Topic:</strong> ${topic}</p>
+      <p><strong>Join Link:</strong> <a href="${data.join_url}" target="_blank">${data.join_url}</a></p>
+      <p><strong>Password:</strong> ${data.password}</p>
+      <p>Meeting is active now. You can join anytime.</p>
+    `;
+
+    if (creator?.email) {
+      await transporter.sendMail({
+        from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        to: creator.email,
+        subject,
+        html: generateEmailTemplate({
+          firstName: creator.firstName,
+          subject,
+          content: emailContent(creator, "host"),
+        }),
+      });
+    }
+
+    if (receiver?.email) {
+      await transporter.sendMail({
+        from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        to: receiver.email,
+        subject,
+        html: generateEmailTemplate({
+          firstName: receiver.firstName,
+          subject,
+          content: emailContent(receiver, "participant"),
+        }),
+      });
+    }
 
     res.status(201).json(savedMeeting);
   } catch (err) {
     console.error("Meeting error:", err);
     res.status(500).json({ error: "Internal server error" });
-  }
-};
-
-export const getUserMeetings = async (req, res) => {
-  const userId = req.params.userId || req.user?._id;
-
-  try {
-    const meetings = await Meeting.find({ createdBy: userId }).sort({ createdAt: -1 });
-
-    res.status(200).json(meetings);
-  } catch (err) {
-    console.error("Error fetching meetings:", err);
-    res.status(500).json({ error: "Failed to fetch meetings" });
   }
 };
 
@@ -98,11 +130,26 @@ export const deleteZoomMeeting = async (req, res) => {
   }
 };
 
+export const getUserMeetings = async (req, res) => {
+  const userId = req.params.userId || req.user?._id;
 
+  try {
+    const meetings = await Meeting.find({ createdBy: userId })
+      .populate("createdBy", "firstName lastName email profileUrl")
+      .populate("participant", "firstName lastName email profileUrl")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json(meetings);
+  } catch (err) {
+    console.error("Error fetching meetings:", err);
+    res.status(500).json({ error: "Failed to fetch meetings" });
+  }
+};
 export const getAllMeetings = async (req, res) => {
   try {
     const meetings = await Meeting.find({})
-      .populate("createdBy", "name email") // optional: show user info
+      .populate("createdBy", "firstName lastName email profileUrl")
+      .populate("participant", "firstName lastName email profileUrl")
       .sort({ createdAt: -1 });
 
     res.status(200).json(meetings);
