@@ -1,13 +1,14 @@
 import fetch from 'node-fetch';
 import { Meeting } from '../models/Meeting.js';
-import { User } from "../models/user.js"
+import { User } from "../models/user.js";
 import { getZoomAccessToken } from '../utils/zoom.js';
 import { transporter } from '../utils/mailer.js';
 import generateEmailTemplate from "../utils/emailTemplate.js";
 
+
 export const createZoomMeeting = async (req, res) => {
   const { topic, duration, userId, participantId } = req.body;
-
+console.log("user id is ", userId);
   try {
     const token = await getZoomAccessToken();
 
@@ -19,7 +20,7 @@ export const createZoomMeeting = async (req, res) => {
       },
       body: JSON.stringify({
         topic,
-        type: 1, // Instant meeting
+        type: 1,
         duration,
         settings: {
           join_before_host: true,
@@ -35,9 +36,10 @@ export const createZoomMeeting = async (req, res) => {
 
     const data = await zoomRes.json();
 
-    // Save meeting to MongoDB
+    // Save to DB
     const savedMeeting = await Meeting.create({
       topic,
+      duration,
       meeting_id: data.id,
       join_url: data.join_url,
       start_url: data.start_url,
@@ -46,26 +48,12 @@ export const createZoomMeeting = async (req, res) => {
       participant: participantId,
     });
 
-    // Fetch user info
+    // Notify both users
     const [creator, receiver] = await Promise.all([
       User.findById(userId),
       User.findById(participantId),
     ]);
 
-    // Log user data
-    console.log("📌 Meeting Created:");
-    console.log("👤 Host:", {
-      id: creator?._id,
-      name: `${creator?.firstName} ${creator?.lastName}`,
-      email: creator?.email,
-    });
-    console.log("👥 Participant:", {
-      id: receiver?._id,
-      name: `${receiver?.firstName} ${receiver?.lastName}`,
-      email: receiver?.email,
-    });
-
-    // Email content
     const subject = `Zoom Meeting Scheduled: ${topic}`;
     const emailContent = (user, role) => `
       <p>Dear ${user.firstName},</p>
@@ -76,10 +64,9 @@ export const createZoomMeeting = async (req, res) => {
       <p>Meeting is active now. You can join anytime.</p>
     `;
 
-    // Send emails
     if (creator?.email) {
       await transporter.sendMail({
-        from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        from: `"Platform Bot" <${process.env.ADMIN_EMAIL}>`,
         to: creator.email,
         subject,
         html: generateEmailTemplate({
@@ -92,7 +79,7 @@ export const createZoomMeeting = async (req, res) => {
 
     if (receiver?.email) {
       await transporter.sendMail({
-        from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        from: `"Platform Bot" <${process.env.ADMIN_EMAIL}>`,
         to: receiver.email,
         subject,
         html: generateEmailTemplate({
@@ -105,7 +92,7 @@ export const createZoomMeeting = async (req, res) => {
 
     res.status(201).json(savedMeeting);
   } catch (err) {
-    console.error("❌ Meeting error:", err);
+    console.error("Meeting error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 };
