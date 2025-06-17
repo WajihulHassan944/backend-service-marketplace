@@ -112,7 +112,7 @@ export const deleteZoomMeeting = async (req, res) => {
   const userId = req.body.userId;
 
   try {
-    const meeting = await Meeting.findOne({ meeting_id: meetingId, createdBy: userId });
+    const meeting = await Meeting.findOne({ meeting_id: meetingId });
 
     if (!meeting) {
       return res.status(404).json({ error: "Meeting not found or unauthorized" });
