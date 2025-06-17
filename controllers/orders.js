@@ -930,11 +930,10 @@ export const respondToResolutionRequest = async (req, res, next) => {
       });
     }
 
-    // If it's from a link (email), show confirmation
     if (req.headers.accept?.includes("text/html")) {
       return res.send(`
         <div style="text-align: center; margin-top: 100px;">
-          <h2>✅ Resolution ${action === "accept" ? "Accepted" : "Rejected"} Successfully</h2>
+          <h2>Resolution ${action === "accept" ? "Accepted" : "Rejected"} Successfully</h2>
           <p>This ticket has been marked as <strong>${order.resolutionRequest.status}</strong>.</p>
         </div>
       `);

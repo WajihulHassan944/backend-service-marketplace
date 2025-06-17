@@ -1,5 +1,6 @@
 import express from "express";
 import userRouter from "./routes/user.js";
+import zoomRouter from "./routes/zoom.js";
 import gigsRouter from "./routes/gigs.js";
 import ordersRouter from "./routes/orders.js";
 import messagesRouter from "./routes/messages.js";
@@ -31,6 +32,7 @@ app.use("/api/category", categoryRouter);
 app.use("/api/gigs", gigsRouter);
 app.use("/api/messages", messagesRouter);
 app.use("/api/orders", ordersRouter);
+app.use("/api/zoom", zoomRouter);
 
 app.get("/", (req, res) => {
   res.send("Nice working backend by Muhammad Furqan Wajih");
