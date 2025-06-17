@@ -62,3 +62,52 @@ export const getUserMeetings = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch meetings" });
   }
 };
+
+export const deleteZoomMeeting = async (req, res) => {
+  const { meetingId } = req.params;
+  const userId = req.user?._id || req.body.userId;
+
+  try {
+    const meeting = await Meeting.findOne({ meeting_id: meetingId, createdBy: userId });
+
+    if (!meeting) {
+      return res.status(404).json({ error: "Meeting not found or unauthorized" });
+    }
+
+    const token = await getZoomAccessToken();
+
+    const zoomRes = await fetch(`https://api.zoom.us/v2/meetings/${meetingId}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!zoomRes.ok && zoomRes.status !== 404) {
+      const error = await zoomRes.text();
+      console.error("Zoom deletion failed:", error);
+      return res.status(500).json({ error: "Failed to delete meeting on Zoom" });
+    }
+
+    await Meeting.findOneAndDelete({ meeting_id: meetingId });
+
+    res.status(200).json({ message: "Meeting deleted from Zoom and database" });
+  } catch (err) {
+    console.error("Delete meeting error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+
+export const getAllMeetings = async (req, res) => {
+  try {
+    const meetings = await Meeting.find({})
+      .populate("createdBy", "name email") // optional: show user info
+      .sort({ createdAt: -1 });
+
+    res.status(200).json(meetings);
+  } catch (err) {
+    console.error("Error fetching all meetings:", err);
+    res.status(500).json({ error: "Failed to fetch meetings" });
+  }
+};
