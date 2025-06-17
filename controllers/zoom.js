@@ -19,7 +19,7 @@ export const createZoomMeeting = async (req, res) => {
       },
       body: JSON.stringify({
         topic,
-        type: 1, // Instant
+        type: 1, // Instant meeting
         duration,
         settings: {
           join_before_host: true,
@@ -35,23 +35,24 @@ export const createZoomMeeting = async (req, res) => {
 
     const data = await zoomRes.json();
 
-    // Get user details first
-    const creator = await User.findById(userId);
-    const receiver = await User.findById(participantId);
-
-    // Save to DB with all fields
+    // Save meeting to MongoDB
     const savedMeeting = await Meeting.create({
       topic,
-      duration,
       meeting_id: data.id,
       join_url: data.join_url,
       start_url: data.start_url,
       password: data.password,
-      createdBy: creator._id,
-      participant: receiver._id,
+      createdBy: userId,
+      participant: participantId,
     });
 
-    // Now log correctly
+    // Fetch user info
+    const [creator, receiver] = await Promise.all([
+      User.findById(userId),
+      User.findById(participantId),
+    ]);
+
+    // Log user data
     console.log("📌 Meeting Created:");
     console.log("👤 Host:", {
       id: creator?._id,
@@ -64,7 +65,7 @@ export const createZoomMeeting = async (req, res) => {
       email: receiver?.email,
     });
 
-    // Email logic
+    // Email content
     const subject = `Zoom Meeting Scheduled: ${topic}`;
     const emailContent = (user, role) => `
       <p>Dear ${user.firstName},</p>
@@ -75,6 +76,7 @@ export const createZoomMeeting = async (req, res) => {
       <p>Meeting is active now. You can join anytime.</p>
     `;
 
+    // Send emails
     if (creator?.email) {
       await transporter.sendMail({
         from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
