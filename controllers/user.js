@@ -9,6 +9,7 @@ import fetch from "node-fetch";
 import jwt from "jsonwebtoken";
 import { transporter } from "../utils/mailer.js";
 import generateEmailTemplate from "../utils/emailTemplate.js";
+import { Wallet } from "../models/wallet.js";
 
 const fetchGoogleProfile = async (accessToken) => {
   const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
@@ -482,7 +483,9 @@ if (role === "seller") {
     if (isSeller) {
       await sendSellerApprovalEmail(user);
     }
-
+await Wallet.create({
+      userId: user._id,
+    });
     res.status(201).json({
       success: true,
       message: isBuyer ? "Registration successful. Please verify your email." : "Registered Successfully",

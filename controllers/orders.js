@@ -6,6 +6,8 @@ import { transporter } from "../utils/mailer.js";
 import generateEmailTemplate from "../utils/emailTemplate.js";
 import streamifier from "streamifier";
 import cloudinary from "../utils/cloudinary.js";
+import { Wallet } from "../models/wallet.js";
+import stripe from "../utils/stripe.js";
 
 // Helper to upload any type of file to Cloudinary
 const uploadToCloudinary = (buffer, originalName = "file") => {
@@ -52,7 +54,7 @@ export const createOrder = async (req, res, next) => {
     const gig = await Gig.findById(gigId);
     if (!gig) return next(new ErrorHandler("Gig not found", 404));
 
-     if (gig.userId.toString() !== sellerId) {
+    if (gig.userId.toString() !== sellerId) {
       return next(new ErrorHandler("Seller ID does not match the gig's owner", 403));
     }
 
@@ -64,6 +66,34 @@ export const createOrder = async (req, res, next) => {
     const seller = await User.findById(sellerId);
     if (!buyer || !seller) {
       return next(new ErrorHandler("Buyer or seller not found", 404));
+    }
+
+    // 🔐 Fetch wallet and card
+    const wallet = await Wallet.findOne({ userId: buyerId });
+    if (!wallet) {
+      return next(new ErrorHandler("Wallet not found for buyer", 404));
+    }
+
+    // 💳 Create token and charge using dummy card
+    const { cardNumber, expiryMonth, expiryYear, cvc } = wallet.stripeCard;
+    const token = await stripe.tokens.create({
+      card: {
+        number: cardNumber.replace(/\s/g, ""),
+        exp_month: expiryMonth,
+        exp_year: expiryYear,
+        cvc: cvc,
+      },
+    });
+
+    const charge = await stripe.charges.create({
+      amount: Math.round(totalAmount * 100), // in cents
+      currency: "usd",
+      source: token.id,
+      description: `Payment for gig: ${gig.gigTitle}`,
+    });
+
+    if (charge.status !== "succeeded") {
+      return next(new ErrorHandler("Payment failed", 402));
     }
 
     // Handle file upload (optional, 1 file max)
@@ -94,7 +124,7 @@ export const createOrder = async (req, res, next) => {
       requirements,
       totalAmount,
       files: uploadedFiles,
-      isPaid: true, // Adjust this if integrating payment gateway
+      isPaid: true,
       paidAt: new Date(),
     });
 
