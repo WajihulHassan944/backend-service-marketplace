@@ -9,7 +9,7 @@ import cloudinary from "../utils/cloudinary.js";
 import { Wallet } from "../models/wallet.js";
 import stripe from "../utils/stripe.js";
 
-// Helper to upload any type of file to Cloudinary
+
 const uploadToCloudinary = (buffer, originalName = "file") => {
   return new Promise((resolve, reject) => {
     const fileType = originalName.split('.').pop().toLowerCase();
@@ -74,19 +74,11 @@ export const createOrder = async (req, res, next) => {
       return next(new ErrorHandler("Wallet not found for buyer", 404));
     }
 
-    // 💳 Create token and charge using dummy card
-    const { cardNumber, expiryMonth, expiryYear, cvc } = wallet.stripeCard;
-    const token = await stripe.tokens.create({
-      card: {
-        number: cardNumber.replace(/\s/g, ""),
-        exp_month: expiryMonth,
-        exp_year: expiryYear,
-        cvc: cvc,
-      },
-    });
+     // Simulated card token for Stripe test
+    const token = { id: "tok_visa" };
 
     const charge = await stripe.charges.create({
-      amount: Math.round(totalAmount * 100), // in cents
+      amount: Math.round(totalAmount * 100),
       currency: "usd",
       source: token.id,
       description: `Payment for gig: ${gig.gigTitle}`,
@@ -96,7 +88,19 @@ export const createOrder = async (req, res, next) => {
       return next(new ErrorHandler("Payment failed", 402));
     }
 
-    // Handle file upload (optional, 1 file max)
+    // wallet.balance -= totalAmount;
+
+    // 📄 Add debit transaction
+    wallet.transactions.push({
+      type: "debit",
+      amount: totalAmount,
+      description: `Payment for order on gig "${gig.gigTitle}"`,
+    });
+
+    await wallet.save();
+
+
+
     let uploadedFiles = [];
     if (req.file && req.file.buffer) {
       try {
@@ -172,6 +176,15 @@ export const createOrder = async (req, res, next) => {
       success: true,
       message: "Order placed successfully.",
       order,
+      stripePayment: {
+    id: charge.id,
+    amount: charge.amount,
+    currency: charge.currency,
+    status: charge.status,
+    payment_method: charge.payment_method,
+    receipt_url: charge.receipt_url,
+    created: charge.created,
+  },
     });
 
   } catch (error) {
@@ -1025,3 +1038,5 @@ export const getDisputedOrders = async (req, res, next) => {
     next(err);
   }
 };
+
+

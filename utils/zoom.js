@@ -1,3 +1,7 @@
+
+import dotenv from "dotenv";
+dotenv.config({ path: "./data/config.env" });
+
 import fetch from 'node-fetch';
 
 export const getZoomAccessToken = async () => {

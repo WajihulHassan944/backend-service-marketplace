@@ -138,7 +138,7 @@ resolutionRequest: {
   },
   reason: {
     type: String,
-    required: true,
+   
   },
   status: {
   type: String,
@@ -146,13 +146,11 @@ resolutionRequest: {
  },
   message: {
     type: String,
-    required: true,
     maxlength: 500,
   },
   requestedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
-    required: true,
   },
   requestedAt: {
     type: Date,

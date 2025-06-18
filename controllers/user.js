@@ -10,6 +10,7 @@ import jwt from "jsonwebtoken";
 import { transporter } from "../utils/mailer.js";
 import generateEmailTemplate from "../utils/emailTemplate.js";
 import { Wallet } from "../models/wallet.js";
+import stripe from "../utils/stripe.js";
 
 const fetchGoogleProfile = async (accessToken) => {
   const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
@@ -51,6 +52,22 @@ export const googleRegister = async (req, res, next) => {
       isSubscribed: true,
       isAgreed: true,
     });
+
+  // ✅ Initialize Stripe Customer and Wallet
+    const stripeCustomer = await stripe.customers.create({
+      email: user.email,
+      name: `${user.firstName} ${user.lastName}`.trim(),
+    });
+
+    const newWallet = await Wallet.create({
+      userId: user._id,
+      stripeCustomerId: stripeCustomer.id,
+      balance: 0,
+      cards: [],
+      transactions: [],
+    });
+
+
 
     // ✅ Generate welcome email using reusable template
     const welcomeHtml = generateEmailTemplate({
@@ -353,7 +370,7 @@ export const register = async (req, res, next) => {
       password,
       country,
       role,
-      sellerDetails, // Expecting full object from Postman
+      sellerDetails, 
     } = req.body;
 
     const existingUser = await User.findOne({ email });
@@ -451,6 +468,23 @@ if (role === "seller") {
 
     const user = await User.create(newUserData);
 
+  // ✅ Initialize Stripe Customer and Wallet
+    const stripeCustomer = await stripe.customers.create({
+      email: user.email,
+      name: `${user.firstName} ${user.lastName}`.trim(),
+    });
+
+    const newWallet = await Wallet.create({
+      userId: user._id,
+      stripeCustomerId: stripeCustomer.id,
+      balance: 0,
+      cards: [],
+      transactions: [],
+    });
+
+
+
+
    if (isBuyer && !isSeller) {
   // Send buyer verification email only if not also a seller
   const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
@@ -483,9 +517,7 @@ if (role === "seller") {
     if (isSeller) {
       await sendSellerApprovalEmail(user);
     }
-await Wallet.create({
-      userId: user._id,
-    });
+
     res.status(201).json({
       success: true,
       message: isBuyer ? "Registration successful. Please verify your email." : "Registered Successfully",
@@ -708,14 +740,20 @@ export const verifyUser = async (req, res, next) => {
   }
 };
 
+export const getMyProfile = async (req, res, next) => {
+  try {
+    // Fetch the wallet for the logged-in user
+    const wallet = await Wallet.findOne({ userId: req.user._id });
 
-export const getMyProfile = (req, res) => {
-  res.status(200).json({
-    success: true,
-    user: req.user,
-  });
+    res.status(200).json({
+      success: true,
+      user: req.user,
+      wallet: wallet || { balance: 0, transactions: [] }, // fallback if wallet doesn't exist
+    });
+  } catch (error) {
+    next(error); // pass error to centralized error handler
+  }
 };
-
 
 export const logout = (req, res) => {
   const nodeEnv = process.env.NODE_ENV;
@@ -787,3 +825,4 @@ export const allAvailableSellers = async (req, res, next) => {
     next(error);
   }
 };
+

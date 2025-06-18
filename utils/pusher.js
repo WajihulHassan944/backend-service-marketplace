@@ -1,3 +1,7 @@
+
+import dotenv from "dotenv";
+dotenv.config({ path: "./data/config.env" });
+
 import Pusher from "pusher";
 
 export const pusher = new Pusher({

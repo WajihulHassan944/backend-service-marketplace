@@ -1,3 +1,7 @@
+
+import dotenv from "dotenv";
+dotenv.config({ path: "./data/config.env" });
+
 import nodemailer from "nodemailer";
 
 export const transporter = nodemailer.createTransport({
