@@ -141,11 +141,32 @@ export const googleLogin = async (req, res, next) => {
       return next(new ErrorHandler("Account is either not verified or has been blocked.", 403));
     }
 
-    // Determine top role
-    const roles = user.role || [];
-    const topRole = roles.includes("seller") ? "seller" : "buyer";
+    // Clean roles: remove duplicates and conditionally include "seller"
+    let cleanedRoles = Array.from(new Set(user.role || []));
+
+    if (!user.sellerStatus) {
+      cleanedRoles = cleanedRoles.filter(role => role !== "seller");
+    }
+
+    // Determine top role (if available)
+    const priority = { seller: 1, buyer: 2 };
+    const sortedRoles = [...cleanedRoles].sort((a, b) => priority[a] - priority[b]);
+    const topRole = sortedRoles[0] || "buyer";
 
     sendCookie(user, res, `Welcome back, ${user.firstName}`, 200, {
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileUrl: user.profileUrl || picture,
+        email: user.email,
+        country: user.country,
+        role: cleanedRoles,
+        verified: user.verified,
+        blocked: user.blocked,
+        createdAt: user.createdAt,
+        sellerStatus: user.sellerStatus,
+      },
       topRole,
     });
 
@@ -154,7 +175,6 @@ export const googleLogin = async (req, res, next) => {
     next(new ErrorHandler("Google Login Failed", 500));
   }
 };
-
 
 
 export const blockUser = async (req, res, next) => {
@@ -292,7 +312,6 @@ export const deleteUserById = async (req, res, next) => {
   }
 };
 
-
 export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -325,6 +344,14 @@ export const login = async (req, res, next) => {
       return next(new ErrorHandler("Invalid Email or Password", 400));
     }
 
+    // Clean roles: remove duplicates and conditionally include "seller"
+    let cleanedRoles = Array.from(new Set(user.role)); // remove duplicates
+
+    // Remove "seller" if sellerStatus is false
+    if (!user.sellerStatus) {
+      cleanedRoles = cleanedRoles.filter(role => role !== "seller");
+    }
+
     const cleanedUser = {
       _id: user._id,
       firstName: user.firstName,
@@ -332,10 +359,11 @@ export const login = async (req, res, next) => {
       profileUrl: user.profileUrl,
       email: user.email,
       country: user.country,
-      role: user.role,
+      role: cleanedRoles,
       verified: user.verified,
       blocked: user.blocked,
       createdAt: user.createdAt,
+      sellerStatus: user.sellerStatus,
     };
 
     sendCookie(user, res, "Login Successful", 200, { user: cleanedUser });
@@ -769,7 +797,6 @@ const timeAgo = (date) => {
   return formatDistanceToNow(new Date(date), { addSuffix: true }); // e.g. "2 weeks ago"
 };
 
-
 export const getMyProfile = async (req, res, next) => {
   try {
     const userId = req.user._id;
@@ -860,7 +887,6 @@ export const getMyProfile = async (req, res, next) => {
       }
     }
 
-    // 💬 Chats count
     const chatsCount = await Conversation.countDocuments({
       $or: [{ participantOne: userId }, { participantTwo: userId }],
     });
@@ -875,8 +901,16 @@ export const getMyProfile = async (req, res, next) => {
 
     const rawUser = req.user.toObject?.() || req.user;
 
+    // 💡 Clean and validate roles
+    let cleanedRoles = Array.from(new Set(rawUser.role || []));
+    if (!rawUser.sellerStatus) {
+      cleanedRoles = cleanedRoles.filter((role) => role !== "seller");
+    }
+
     const userWithAnalytics = {
       ...rawUser,
+
+      role: cleanedRoles,
 
       sellerDetails: {
         ...(rawUser.sellerDetails || {}),
