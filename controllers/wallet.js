@@ -16,6 +16,14 @@ export const addBillingMethod = async (req, res, next) => {
     let wallet = await Wallet.findOne({ userId });
     if (!wallet) return next(new ErrorHandler("Wallet not found", 404));
 
+    // ✅ Duplicate check before Stripe operations
+    const alreadyExists = wallet.cards.some(
+      (c) => c.stripeCardId === paymentMethodId
+    );
+    if (alreadyExists) {
+      return next(new ErrorHandler("Card already added", 409));
+    }
+
     // ✅ Step 1: Create a Stripe Customer if not exists
     if (!wallet.stripeCustomerId) {
       const customer = await stripe.customers.create({
@@ -32,7 +40,7 @@ export const addBillingMethod = async (req, res, next) => {
       customer: wallet.stripeCustomerId,
     });
 
-    // ✅ Step 3: Set default payment method (optional but good for billing)
+    // ✅ Step 3: Set default payment method
     await stripe.customers.update(wallet.stripeCustomerId, {
       invoice_settings: { default_payment_method: paymentMethodId },
     });
@@ -67,6 +75,80 @@ export const addBillingMethod = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+export const setPrimaryCard = async (req, res, next) => {
+  const { userId, stripeCardId } = req.body;
+
+  const wallet = await Wallet.findOne({ userId });
+  if (!wallet) return next(new ErrorHandler("Wallet not found", 404));
+
+  const card = wallet.cards.find(c => c.stripeCardId === stripeCardId);
+  if (!card) return next(new ErrorHandler("Card not found", 404));
+
+  wallet.cards.forEach(c => c.isPrimary = false);
+  card.isPrimary = true;
+
+  // Optional: update Stripe default payment method
+  await stripe.customers.update(wallet.stripeCustomerId, {
+    invoice_settings: { default_payment_method: stripeCardId }
+  });
+
+  await wallet.save();
+
+  res.status(200).json({ success: true, message: "Primary card updated successfully." });
+};
+
+// DELETE /api/wallet/remove-card
+export const removeCard = async (req, res, next) => {
+  try {
+    const { userId, stripeCardId } = req.body;
+
+    const wallet = await Wallet.findOne({ userId });
+    if (!wallet) return next(new ErrorHandler("Wallet not found", 404));
+
+    const cardIndex = wallet.cards.findIndex(c => c.stripeCardId === stripeCardId);
+    if (cardIndex === -1) return next(new ErrorHandler("Card not found", 404));
+
+    const isPrimary = wallet.cards[cardIndex].isPrimary;
+
+    // Remove from Stripe customer
+    await stripe.paymentMethods.detach(stripeCardId);
+
+    // Remove from wallet
+    wallet.cards.splice(cardIndex, 1);
+
+    // If the removed card was primary, optionally promote another to primary
+    if (isPrimary && wallet.cards.length > 0) {
+      wallet.cards[0].isPrimary = true;
+      await stripe.customers.update(wallet.stripeCustomerId, {
+        invoice_settings: { default_payment_method: wallet.cards[0].stripeCardId },
+      });
+    }
+
+    await wallet.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Card removed successfully.",
+      cards: wallet.cards,
+    });
+  } catch (error) {
+    console.error("❌ Error in removeCard:", error);
+    next(new ErrorHandler(error.message || "Failed to remove card", 500));
+  }
+};
+
 
 
 // POST /api/wallet/add-funds
@@ -136,7 +218,8 @@ export const addFundsToWallet = async (req, res, next) => {
         currency: paymentIntent.currency,
         status: paymentIntent.status,
         payment_method: paymentIntent.payment_method,
-        receipt_url: paymentIntent.charges.data[0]?.receipt_url,
+      receipt_url: paymentIntent.charges?.data?.[0]?.receipt_url || null,
+
         created: paymentIntent.created,
       },
     });
@@ -152,40 +235,131 @@ export const addFundsToWallet = async (req, res, next) => {
 };
 
 
-export const initializeWalletsForAllUsers = async () => {
+export const withdrawFunds = async (req, res, next) => {
   try {
-    const users = await User.find();
+    const { userId, amount } = req.body;
 
-    for (const user of users) {
-      const existingWallet = await Wallet.findOne({ userId: user._id });
-      if (existingWallet) {
-        console.log(`Wallet already exists for ${user.email}`);
-        continue;
-      }
-
-      // 1. Create Stripe Customer
-      const stripeCustomer = await stripe.customers.create({
-        email: user.email,
-        name: `${user.firstName} ${user.lastName || ""}`.trim(),
-      });
-
-      // 2. Create Wallet Document
-      const newWallet = new Wallet({
-        userId: user._id,
-        stripeCustomerId: stripeCustomer.id,
-        balance: 0,
-        cards: [],
-        transactions: [],
-      });
-
-      await newWallet.save();
-      console.log(`✅ Wallet initialized for ${user.email}`);
+    if (!userId || !amount || isNaN(amount) || amount <= 0) {
+      return next(new ErrorHandler("User ID and valid amount are required", 400));
     }
 
-    console.log("🎉 Wallet initialization completed for all users.");
-  } catch (err) {
-    console.error("❌ Error initializing wallets:", err);
-  } finally {
-    mongoose.disconnect();
+    const user = await User.findById(userId);
+    if (!user) return next(new ErrorHandler("User not found", 404));
+
+    // Ensure Stripe Connect account exists
+    const { accountId, onboardingUrl } = await ensureStripeConnectAccount(user);
+
+    if (!accountId) {
+      return next(new ErrorHandler("Failed to create Stripe account", 500));
+    }
+
+    // If onboarding is required (new account), return the onboarding URL
+    if (onboardingUrl) {
+      return res.status(200).json({
+        success: false,
+        requiresOnboarding: true,
+        message: "Stripe onboarding required.",
+        onboardingUrl,
+      });
+    }
+
+    const wallet = await Wallet.findOne({ userId });
+    if (!wallet) return next(new ErrorHandler("Wallet not found", 404));
+
+    if (wallet.balance < amount) {
+      return next(new ErrorHandler("Insufficient balance.", 400));
+    }
+
+    // Create the payout
+    const payout = await stripe.transfers.create({
+      amount: Math.round(amount * 100),
+      currency: "usd",
+      destination: accountId,
+      description: `Withdrawal for ${user.firstName} (${user.email})`,
+      metadata: {
+        userId: user._id.toString(),
+        purpose: "wallet_withdrawal",
+      },
+    });
+
+    // Deduct from wallet
+    wallet.balance -= amount;
+    wallet.transactions.push({
+      type: "debit",
+      amount,
+      description: "Wallet Withdrawal",
+    });
+
+    await wallet.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Withdrawal processed successfully.",
+      stripeTransfer: payout,
+      wallet: {
+        balance: wallet.balance,
+        transactions: wallet.transactions,
+      },
+    });
+
+  } catch (error) {
+    console.error("❌ Error in withdrawFunds:", error);
+    next(new ErrorHandler(error.message || "Withdrawal failed.", 500));
   }
 };
+
+const ensureStripeConnectAccount = async (user) => {
+  // If user already has a Stripe account ID, return it
+  if (user.stripeAccountId) {
+    return { accountId: user.stripeAccountId };
+  }
+
+  // Create Express Stripe Connect account
+  const account = await stripe.accounts.create({
+    type: "express", // ✅ express for embedded onboarding
+    country: "MY", // Change to "US" if testing internationally
+    email: user.email,
+    business_type: "individual",
+    capabilities: {
+      transfers: { requested: true }, // Needed for payouts
+    },
+  });
+
+  // Save account ID to user
+  user.stripeAccountId = account.id;
+  await user.save();
+
+  // Create onboarding link
+  const accountLink = await stripe.accountLinks.create({
+    account: account.id,
+    refresh_url: `${process.env.CLIENT_URL}/settings/billing`,
+    return_url: `${process.env.CLIENT_URL}/settings/billing`,
+    type: "account_onboarding",
+  });
+
+  return {
+    accountId: account.id,
+    onboardingUrl: accountLink.url,
+  };
+};
+
+
+const countryMap = {
+  "United States": "US",
+  "Pakistan": "PK",
+  "United Kingdom": "GB",
+  "India": "IN",
+  "Canada": "CA",
+  "Germany": "DE",
+  "France": "FR",
+  "Australia": "AU",
+  "Brazil": "BR",
+  "UAE": "AE",
+  "Malaysia": "MY"
+};
+
+function getISOCode(countryName) {
+  if (!countryName) return null;
+  return countryMap[countryName.trim()] || null;
+}
+

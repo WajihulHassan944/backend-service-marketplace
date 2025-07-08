@@ -1,6 +1,10 @@
 import { config } from "dotenv";
 import express from "express";
 import userRouter from "./routes/user.js";
+import notificationRouter from "./routes/notification.js";
+import emailRouter from "./routes/email.js";
+import notepadRouter from "./routes/notepad.js";
+import portfolioRouter from "./routes/portfolio.js";
 import walletRouter from "./routes/wallet.js";
 import zoomRouter from "./routes/zoom.js";
 import gigsRouter from "./routes/gigs.js";
@@ -22,7 +26,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(
   cors({
-    origin: [process.env.FRONTEND_URL, "http://localhost:3000"],
+    origin: [process.env.FRONTEND_URL, "http://localhost:3000", "http://localhost:3001"],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true,
   })
@@ -35,6 +39,10 @@ app.use("/api/messages", messagesRouter);
 app.use("/api/orders", ordersRouter);
 app.use("/api/zoom", zoomRouter);
 app.use("/api/wallet", walletRouter);
+app.use("/api/portfolio", portfolioRouter);
+app.use("/api/notes", notepadRouter);
+app.use("/api/notifications", notificationRouter);
+app.use("/api/email", emailRouter);
 
 app.get("/", (req, res) => {
   res.send("Nice working backend by Muhammad Furqan Wajih");

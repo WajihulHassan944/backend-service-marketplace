@@ -11,6 +11,13 @@ import { transporter } from "../utils/mailer.js";
 import generateEmailTemplate from "../utils/emailTemplate.js";
 import { Wallet } from "../models/wallet.js";
 import stripe from "../utils/stripe.js";
+import { verifyRecaptcha } from "../utils/verifyRecaptcha.js";
+import { Order } from "../models/orders.js";
+import { Notepad } from "../models/notepad.js";
+import { formatDistanceToNow } from 'date-fns'; // Make sure date-fns is installed
+import { Conversation } from "../models/conversation.js";
+import { Gig } from "../models/gigs.js";
+import { Portfolio } from "../models/portfolio.js";
 
 const fetchGoogleProfile = async (accessToken) => {
   const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
@@ -245,21 +252,40 @@ export const getAllAdmins = async (req, res, next) => {
 
 
 
+
 export const deleteUserById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
     const user = await User.findById(id);
+    if (!user) return next(new ErrorHandler("User not found", 404));
 
-    if (!user) {
-      return next(new ErrorHandler("User not found", 404));
+    // Delete Gigs and their Cloudinary media (optional)
+    const gigs = await Gig.find({ userId: id });
+    for (const gig of gigs) {
+      for (const img of gig.images || []) {
+        if (img.public_id) {
+          // await cloudinary.uploader.destroy(img.public_id); // optional
+        }
+      }
+      if (gig.pdf?.public_id) {
+        // await cloudinary.uploader.destroy(gig.pdf.public_id); // optional
+      }
     }
+    await Gig.deleteMany({ userId: id });
 
+    // Delete Notepads
+    await Notepad.deleteMany({ userId: id });
+
+    // Delete Portfolios
+    await Portfolio.deleteMany({ user: id });
+
+    // Delete the user
     await user.deleteOne();
 
     res.status(200).json({
       success: true,
-      message: `User ${user.firstName} ${user.lastName} deleted successfully.`,
+      message: `User ${user.firstName} ${user.lastName} and all associated data deleted successfully.`,
     });
   } catch (error) {
     next(error);
@@ -468,7 +494,6 @@ if (role === "seller") {
 
     const user = await User.create(newUserData);
 
-  // ✅ Initialize Stripe Customer and Wallet
     const stripeCustomer = await stripe.customers.create({
       email: user.email,
       name: `${user.firstName} ${user.lastName}`.trim(),
@@ -739,19 +764,238 @@ export const verifyUser = async (req, res, next) => {
     res.status(500).send("<h2>Something went wrong. Please try again later.</h2>");
   }
 };
+const timeAgo = (date) => {
+  if (!date) return null;
+  return formatDistanceToNow(new Date(date), { addSuffix: true }); // e.g. "2 weeks ago"
+};
+
 
 export const getMyProfile = async (req, res, next) => {
   try {
-    // Fetch the wallet for the logged-in user
-    const wallet = await Wallet.findOne({ userId: req.user._id });
+    const userId = req.user._id;
+
+    const wallet = await Wallet.findOne({ userId });
+
+    const orders = await Order.find({
+      $or: [{ buyerId: userId }, { sellerId: userId }]
+    })
+      .select("buyerId sellerId buyerReview sellerReview totalAmount status")
+      .populate("buyerId", "firstName lastName email profileUrl country")
+      .populate("sellerId", "firstName lastName email profileUrl country");
+
+    const buyerReviews = [];
+    const sellerReviews = [];
+
+    // Seller-side analytics
+    let sellerWorkInProgress = 0;
+    let sellerInReview = 0;
+    let activeOrdersCount = 0;
+    let sellerTotalValue = 0;
+    let sellerCompletedCount = 0;
+
+    // Buyer-side analytics
+    let buyerOrdersCount = 0;
+    let buyerCompletedCount = 0;
+    let buyerTotalSpent = 0;
+
+    for (const order of orders) {
+      const isBuyer = order.buyerId?._id?.toString() === userId.toString();
+      const isSeller = order.sellerId?._id?.toString() === userId.toString();
+
+      if (isSeller) {
+        sellerTotalValue += order.totalAmount || 0;
+
+        if (["pending", "in progress", "delivered"].includes(order.status)) {
+          activeOrdersCount++;
+        }
+
+        if (order.status === "completed") {
+          sellerCompletedCount++;
+        }
+
+        if (["pending", "in progress"].includes(order.status)) {
+          sellerWorkInProgress += order.totalAmount || 0;
+        } else if (order.status === "delivered") {
+          sellerInReview += order.totalAmount || 0;
+        }
+      }
+
+      if (isBuyer) {
+        buyerOrdersCount++;
+        buyerTotalSpent += order.totalAmount || 0;
+
+        if (order.status === "completed") {
+          buyerCompletedCount++;
+        }
+      }
+
+      if (isBuyer && order.buyerReview?.review) {
+        buyerReviews.push({
+          ...order.buyerReview,
+          timeAgo: timeAgo(order.buyerReview.createdAt),
+          reviewedGigSeller: {
+            _id: order.sellerId._id,
+            firstName: order.sellerId.firstName,
+            lastName: order.sellerId.lastName,
+            email: order.sellerId.email,
+            profileUrl: order.sellerId.profileUrl || null,
+            country: order.sellerId.country || null,
+          },
+        });
+      }
+
+      if (isSeller && order.sellerReview?.review) {
+        sellerReviews.push({
+          ...order.sellerReview,
+          timeAgo: timeAgo(order.sellerReview.createdAt),
+          reviewedGigBuyer: {
+            _id: order.buyerId._id,
+            firstName: order.buyerId.firstName,
+            lastName: order.buyerId.lastName,
+            email: order.buyerId.email,
+            profileUrl: order.buyerId.profileUrl || null,
+            country: order.buyerId.country || null,
+          },
+        });
+      }
+    }
+
+    // 💬 Chats count
+    const chatsCount = await Conversation.countDocuments({
+      $or: [{ participantOne: userId }, { participantTwo: userId }],
+    });
+
+    const enrichedWallet = {
+      ...(wallet?.toObject?.() || { balance: 0, transactions: [] }),
+      walletStatus: {
+        workInProgress: sellerWorkInProgress,
+        inReview: sellerInReview,
+      },
+    };
+
+    const rawUser = req.user.toObject?.() || req.user;
+
+    const userWithAnalytics = {
+      ...rawUser,
+
+      sellerDetails: {
+        ...(rawUser.sellerDetails || {}),
+        analytics: {
+          activeOrdersCount,
+          totalOrderValue: `$${sellerTotalValue}`,
+          ordersCompletedCount: sellerCompletedCount,
+          chatsCount,
+          notificationsCount: 0,
+        },
+      },
+
+      buyerDetails: {
+        analytics: {
+          ordersPlacedCount: buyerOrdersCount,
+          totalSpent: `$${buyerTotalSpent}`,
+          ordersCompletedCount: buyerCompletedCount,
+          chatsCount,
+          notificationsCount: 0,
+        },
+      },
+    };
 
     res.status(200).json({
       success: true,
-      user: req.user,
-      wallet: wallet || { balance: 0, transactions: [] }, // fallback if wallet doesn't exist
+      user: userWithAnalytics,
+      wallet: enrichedWallet,
+      buyerReviews,
+      sellerReviews,
     });
+
   } catch (error) {
-    next(error); // pass error to centralized error handler
+    next(error);
+  }
+};
+
+export const toggleWishlist = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+    const { gigId } = req.body;
+
+    if (!gigId) {
+      return res.status(400).json({ success: false, message: "gigId is required" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    const alreadyWishlisted = user.wishlist?.includes(gigId);
+
+    if (alreadyWishlisted) {
+      user.wishlist.pull(gigId); // remove from array
+    } else {
+      user.wishlist.push(gigId); // add to array
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: alreadyWishlisted ? "Removed from wishlist" : "Added to wishlist",
+      wishlist: user.wishlist,
+    });
+  } catch (err) {
+    console.error("Toggle wishlist error:", err);
+    next(err);
+  }
+};
+export const getWishlistGigs = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+
+    const user = await User.findById(userId).select("wishlist");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const gigs = await Gig.find({ _id: { $in: user.wishlist } }).populate({
+      path: "userId",
+      select: "firstName lastName profileUrl sellerDetails.level",
+    });
+
+    const enrichedGigs = await Promise.all(
+      gigs.map(async (gig) => {
+        const sellerId = gig.userId?._id;
+
+        // Fetch all orders that contain a review for this seller
+        const ordersWithReview = await Order.find({
+          sellerId,
+          "sellerReview.rating": { $exists: true },
+        }).select("sellerReview.rating");
+
+        const totalRatings = ordersWithReview.reduce(
+          (sum, order) => sum + (order.sellerReview.rating || 0),
+          0
+        );
+        const ratingCount = ordersWithReview.length;
+        const averageRating =
+          ratingCount > 0 ? (totalRatings / ratingCount).toFixed(1) : "0.0";
+
+        return {
+          ...gig.toObject(),
+          userId: {
+            ...gig.userId.toObject(),
+            averageRating,
+            ratingCount,
+          },
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      wishlistCount: user.wishlist.length,
+      gigs: enrichedGigs,
+    });
+  } catch (err) {
+    console.error("Error fetching wishlist gigs:", err);
+    next(err);
   }
 };
 
@@ -826,3 +1070,509 @@ export const allAvailableSellers = async (req, res, next) => {
   }
 };
 
+
+
+
+export const resetPasswordRequest = async (req, res, next) => {
+  try {
+    const { email, currentPassword, captchaToken } = req.body;
+
+    // Find the user by email
+    const user = await User.findOne({ email }).select("+password");
+    if (!user) {
+      return res.status(404).json({ message: "No user found with this email." });
+    }
+
+    // Validate current password
+    const isMatch = await bcrypt.compare(currentPassword, user.password || "");
+    if (!isMatch) {
+      return res.status(401).json({ message: "Incorrect current password." });
+    }
+
+    // reCAPTCHA validation
+    const isHuman = await verifyRecaptcha(captchaToken);
+    if (!isHuman) {
+      return res.status(400).json({ message: "Failed reCAPTCHA verification." });
+    }
+
+    // Generate reset token (1-hour expiry)
+    const resetToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "1h",
+    });
+
+    const resetLink = `http://dotask-service-marketplace.vercel.app/reset-password?token=${resetToken}`;
+
+    // Compose email
+    const mailOptions = {
+      from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
+      to: user.email,
+      subject: "Password Reset Request",
+      html: generateEmailTemplate({
+        firstName: user.firstName,
+        subject: "Reset Your Password",
+        content: `
+          <p>Hello ${user.firstName},</p>
+          <p>You requested a password reset. Click the button below to continue:</p>
+          <div style="margin:30px 0;text-align:center;">
+            <a href="${resetLink}" style="display:inline-block;padding:12px 25px;background-color:#007bff;color:#fff;text-decoration:none;border-radius:5px;font-size:16px;">
+              Reset Password
+            </a>
+          </div>
+          <p>This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.</p>
+        `,
+      }),
+    };
+
+    // Send email and handle errors
+    transporter.sendMail(mailOptions, (err, info) => {
+      if (err) {
+        console.error("❌ Error sending reset email:", err);
+        return res.status(500).json({ message: "Failed to send reset email. Please try again later." });
+      } else {
+        console.log("✅ Reset email sent:", info.response);
+        return res.status(200).json({ message: "Password reset link sent to your email." });
+      }
+    });
+
+  } catch (error) {
+    console.error("🚨 resetPasswordRequest error:", error);
+    next(error);
+  }
+};
+
+
+export const changePasswordDirectly = async (req, res, next) => {
+  try {
+    const {userId , currentPassword, newPassword } = req.body;
+
+    // Find user by _id
+    const user = await User.findById(userId).select("+password");
+    if (!user) {
+      return res.status(404).json({ message: "No user found with this ID." });
+    }
+
+    // Compare current password
+    const isMatch = await bcrypt.compare(currentPassword, user.password || "");
+    if (!isMatch) {
+      return res.status(401).json({ message: "Incorrect current password." });
+    }
+
+    // Hash and update new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    await user.save();
+
+    // Compose confirmation email
+    const mailOptions = {
+      from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
+      to: user.email,
+      subject: "Your Password Has Been Changed",
+      html: generateEmailTemplate({
+        firstName: user.firstName,
+        subject: "Password Changed Successfully",
+        content: `
+          <p>Hello ${user.firstName},</p>
+          <p>Your password was successfully changed. If you did not perform this action, please contact support immediately.</p>
+        `,
+      }),
+    };
+
+    // Send confirmation email
+    transporter.sendMail(mailOptions, (err, info) => {
+      if (err) {
+        console.error("❌ Error sending confirmation email:", err);
+        return res.status(500).json({ message: "Password updated, but email failed to send." });
+      } else {
+        console.log("✅ Confirmation email sent:", info.response);
+        return res.status(200).json({ message: "Password updated and confirmation email sent." });
+      }
+    });
+  } catch (error) {
+    console.error("🚨 changePasswordDirectly error:", error);
+    next(error);
+  }
+};
+
+
+export const resetPasswordConfirm = async (req, res, next) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId;
+
+    const user = await User.findById(userId).select("+password");
+    if (!user) {
+      return res.status(404).json({ message: "User not found or token is invalid." });
+    }
+
+    // Hash the new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    user.password = hashedPassword;
+    await user.save();
+
+    res.status(200).json({ message: "Password has been reset successfully." });
+  } catch (error) {
+    if (error.name === "TokenExpiredError") {
+      return res.status(400).json({ message: "Reset link has expired." });
+    }
+    next(error);
+  }
+};
+
+export const updateProfile = async (req, res, next) => {
+  try {
+    const {
+      userId,
+      firstName,
+      lastName,
+      email,
+      country,
+      linkedUrl,
+      speciality,
+      description,
+      skills, // This should come as a JSON string, will parse below
+    } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ message: "Missing userId in request body." });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Dynamically update only provided fields
+    if (firstName) user.firstName = firstName;
+    if (lastName) user.lastName = lastName;
+    if (email) user.email = email;
+    if (country) user.country = country;
+
+    // Initialize or update sellerDetails fields
+    const updatedSellerDetails = {
+      ...user.sellerDetails,
+      ...(linkedUrl && { linkedUrl }),
+      ...(speciality && { speciality }),
+      ...(description && { description }),
+    };
+
+    if (skills) {
+      try {
+        const parsedSkills = JSON.parse(skills);
+        if (Array.isArray(parsedSkills)) {
+          updatedSellerDetails.skills = parsedSkills;
+        }
+      } catch (err) {
+        return res.status(400).json({ message: "Invalid format for skills. Must be a JSON array string." });
+      }
+    }
+
+    user.sellerDetails = updatedSellerDetails;
+
+    // Handle image upload if file provided
+    if (req.file) {
+      if (user.profileUrl && user.profileUrl.includes("cloudinary.com")) {
+        const publicId = user.profileUrl.split("/").pop().split(".")[0];
+        await cloudinary.uploader.destroy(`user_profiles/${publicId}`);
+      }
+
+      const streamUpload = () =>
+        new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            {
+              folder: 'user_profiles',
+              resource_type: 'image',
+            },
+            (error, result) => {
+              if (result) resolve(result);
+              else reject(error);
+            }
+          );
+          streamifier.createReadStream(req.file.buffer).pipe(stream);
+        });
+
+      const result = await streamUpload();
+      user.profileUrl = result.secure_url;
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      user,
+    });
+
+  } catch (error) {
+    console.error('Update error:', error);
+    next(error);
+  }
+};
+
+
+export const updateAvailabilityStatus = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    const { availabilityStatus } = req.body;
+
+    if (typeof availabilityStatus !== 'boolean') {
+      return res.status(400).json({ message: "availabilityStatus must be a boolean" });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { availabilityStatus },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json({
+      message: "Availability status updated successfully",
+      availabilityStatus: updatedUser.availabilityStatus,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
+
+export const getSellerProfileData = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+    if (!userId) {
+      return res.status(400).json({ message: "Missing userId in request." });
+    }
+
+    const user = await User.findById(userId).lean();
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    // Fetch gigs by user
+    const gigs = await Gig.find({ userId }).lean();
+const portfolios = await Portfolio.find({ user: userId }).lean();
+
+    // Get all relevant orders
+    const orders = await Order.find({
+      $or: [{ buyerId: userId }, { sellerId: userId }],
+    })
+      .select("buyerId sellerId buyerReview sellerReview totalAmount status")
+      .populate("buyerId", "firstName lastName email profileUrl country")
+      .populate("sellerId", "firstName lastName email profileUrl country")
+      .lean();
+
+    const buyerReviews = [];
+    const sellerReviews = [];
+
+    let sellerWorkInProgress = 0;
+    let sellerInReview = 0;
+    let activeOrdersCount = 0;
+    let sellerTotalValue = 0;
+    let sellerCompletedCount = 0;
+
+    let buyerOrdersCount = 0;
+    let buyerCompletedCount = 0;
+    let buyerTotalSpent = 0;
+
+    for (const order of orders) {
+      const isBuyer = order.buyerId?._id?.toString() === userId.toString();
+      const isSeller = order.sellerId?._id?.toString() === userId.toString();
+
+      if (isSeller) {
+        sellerTotalValue += order.totalAmount || 0;
+
+        if (["pending", "in progress", "delivered"].includes(order.status)) {
+          activeOrdersCount++;
+        }
+
+        if (order.status === "completed") {
+          sellerCompletedCount++;
+        }
+
+        if (["pending", "in progress"].includes(order.status)) {
+          sellerWorkInProgress += order.totalAmount || 0;
+        } else if (order.status === "delivered") {
+          sellerInReview += order.totalAmount || 0;
+        }
+      }
+
+      if (isBuyer) {
+        buyerOrdersCount++;
+        buyerTotalSpent += order.totalAmount || 0;
+
+        if (order.status === "completed") {
+          buyerCompletedCount++;
+        }
+      }
+
+      if (isBuyer && order.buyerReview?.review) {
+        buyerReviews.push({
+          ...order.buyerReview,
+          timeAgo: timeAgo(order.buyerReview.createdAt),
+          reviewedGigSeller: {
+            _id: order.sellerId._id,
+            firstName: order.sellerId.firstName,
+            lastName: order.sellerId.lastName,
+            email: order.sellerId.email,
+            profileUrl: order.sellerId.profileUrl || null,
+            country: order.sellerId.country || null,
+          },
+        });
+      }
+
+      if (isSeller && order.sellerReview?.review) {
+        sellerReviews.push({
+          ...order.sellerReview,
+          timeAgo: timeAgo(order.sellerReview.createdAt),
+          reviewedGigBuyer: {
+            _id: order.buyerId._id,
+            firstName: order.buyerId.firstName,
+            lastName: order.buyerId.lastName,
+            email: order.buyerId.email,
+            profileUrl: order.buyerId.profileUrl || null,
+            country: order.buyerId.country || null,
+          },
+        });
+      }
+    }
+
+    const chatsCount = await Conversation.countDocuments({
+      $or: [{ participantOne: userId }, { participantTwo: userId }],
+    });
+
+    const userWithAnalytics = {
+      ...user,
+
+      sellerDetails: {
+        ...(user.sellerDetails || {}),
+        analytics: {
+          activeOrdersCount,
+          totalOrderValue: `$${sellerTotalValue}`,
+          ordersCompletedCount: sellerCompletedCount,
+          chatsCount,
+          notificationsCount: 0,
+          workInProgress: sellerWorkInProgress,
+          inReview: sellerInReview,
+        },
+      },
+
+      buyerDetails: {
+        analytics: {
+          ordersPlacedCount: buyerOrdersCount,
+          totalSpent: `$${buyerTotalSpent}`,
+          ordersCompletedCount: buyerCompletedCount,
+          chatsCount,
+          notificationsCount: 0,
+        },
+      },
+    };
+
+    return res.status(200).json({
+      success: true,
+      user: userWithAnalytics,
+      gigs,
+      portfolios,
+      buyerReviews,
+      sellerReviews,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
+export const getAllPublicSellerProfiles = async (req, res, next) => {
+  try {
+    // 🔍 Find all users who are sellers
+    const sellers = await User.find({
+      $or: [
+        { sellerStatus: true },
+        { role: { $in: ["seller"] } }
+      ]
+    }).select(
+      "_id firstName lastName profileUrl sellerDetails.speciality sellerDetails.level"
+    );
+
+    const sellerProfiles = await Promise.all(
+      sellers.map(async (user) => {
+        const orders = await Order.find({
+          sellerId: user._id,
+          "sellerReview.rating": { $exists: true }
+        }).select("sellerReview.rating");
+
+        let averageRating = "0.0";
+        let totalReviews = "No reviews yet";
+
+        if (orders.length > 0) {
+          const total = orders.reduce((sum, order) => sum + order.sellerReview.rating, 0);
+          averageRating = (total / orders.length).toFixed(1);
+          totalReviews = orders.length;
+        }
+
+        return {
+          _id:user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          profileUrl: user.profileUrl,
+          speciality: user.sellerDetails?.speciality || null,
+          level: user.sellerDetails?.level || "New Seller",
+          totalReviews,
+          averageRating,
+        };
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      sellers: sellerProfiles,
+    });
+  } catch (error) {
+    console.error("Error in getAllPublicSellerProfiles:", error);
+    next(error);
+  }
+};
+
+
+
+export const searchUsers = async (req, res) => {
+  try {
+    const { q } = req.query;
+
+    let users;
+
+    if (!q || q.trim() === '') {
+      // 🔍 No search query, return all sellers
+      users = await User.find({ role: 'seller' })
+        .select('_id firstName lastName userName email profileUrl country sellerDetails');
+    } else {
+      const query = q.trim();
+      const regex = new RegExp(query, 'i'); // case-insensitive match
+
+      users = await User.find({
+        role: 'seller',
+        $or: [
+          { firstName: regex },
+          { lastName: regex },
+          { userName: regex },
+          { email: regex },
+          { 'sellerDetails.speciality': regex },
+          { 'sellerDetails.skills': regex },
+        ],
+      }).select('_id firstName lastName userName email profileUrl country sellerDetails');
+    }
+
+    res.status(200).json({ success: true, users });
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({ success: false, message: 'Server error while searching users.' });
+  }
+};

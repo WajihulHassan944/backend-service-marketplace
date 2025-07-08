@@ -8,6 +8,7 @@ import streamifier from "streamifier";
 import cloudinary from "../utils/cloudinary.js";
 import { Wallet } from "../models/wallet.js";
 import stripe from "../utils/stripe.js";
+import { Notification } from "../models/notification.js";
 
 
 const uploadToCloudinary = (buffer, originalName = "file") => {
@@ -43,15 +44,17 @@ const uploadToCloudinary = (buffer, originalName = "file") => {
 
 // POST /api/orders
 export const createOrder = async (req, res, next) => {
+   let gig;
   try {
-    const { gigId, buyerId, sellerId, packageType, requirements, totalAmount } = req.body;
+   
+    const { gigId, buyerId, sellerId, packageType, requirements, totalAmount, paymentMethod } = req.body;
 
     if (!gigId || !buyerId || !sellerId || !packageType || !requirements || !totalAmount) {
       return next(new ErrorHandler("Missing required fields", 400));
     }
 
     // Fetch gig
-    const gig = await Gig.findById(gigId);
+    gig = await Gig.findById(gigId);
     if (!gig) return next(new ErrorHandler("Gig not found", 404));
 
     if (gig.userId.toString() !== sellerId) {
@@ -67,37 +70,95 @@ export const createOrder = async (req, res, next) => {
     if (!buyer || !seller) {
       return next(new ErrorHandler("Buyer or seller not found", 404));
     }
-
-    // 🔐 Fetch wallet and card
+ // 🔐 Fetch wallet
     const wallet = await Wallet.findOne({ userId: buyerId });
-    if (!wallet) {
-      return next(new ErrorHandler("Wallet not found for buyer", 404));
+    if (!wallet) return next(new ErrorHandler("Wallet not found for buyer", 404));
+
+    let stripeCharge = null;
+
+    // 💳 Handle payment
+    if (paymentMethod === 'balance') {
+      if (wallet.balance < totalAmount) {
+        await Notification.create({
+    user: buyerId,
+    title: "Payment Failed",
+    description: `Wallet balance is insufficient to place order on "${gig.gigTitle}".`,
+    type: "order",
+    targetRole: "buyer",
+  });
+
+        return next(new ErrorHandler("Insufficient wallet balance", 402));
+      }
+
+      wallet.balance -= totalAmount;
+      wallet.transactions.push({
+        type: "debit",
+        amount: totalAmount,
+        description: `Payment for order on gig "${gig.gigTitle}"`,
+      });
+
+      await wallet.save();
     }
+    else if (paymentMethod === 'card') {
+  const primaryCard = wallet.cards.find(c => c.isPrimary);
 
-     // Simulated card token for Stripe test
-    const token = { id: "tok_visa" };
+  if (!primaryCard || !primaryCard.stripeCardId) {
+    return next(new ErrorHandler("No primary card found for payment", 400));
+  }
 
-    const charge = await stripe.charges.create({
-      amount: Math.round(totalAmount * 100),
-      currency: "usd",
-      source: token.id,
-      description: `Payment for gig: ${gig.gigTitle}`,
-    });
-
-    if (charge.status !== "succeeded") {
-      return next(new ErrorHandler("Payment failed", 402));
+  // Create and confirm a PaymentIntent using the saved card
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: Math.round(totalAmount * 100),
+    currency: "usd",
+    customer: wallet.stripeCustomerId,
+    payment_method: primaryCard.stripeCardId, // ✅ Correct usage
+    off_session: true,
+    confirm: true,
+    description: `Payment for gig: ${gig.gigTitle}`,
+    metadata: {
+      buyerId: buyerId,
+      sellerId: sellerId,
+      gigId: gigId,
+      purpose: "gig_order",
     }
+  });
 
-    // wallet.balance -= totalAmount;
+  if (paymentIntent.status !== "succeeded") {
+    await Notification.create({
+    user: buyerId,
+    title: "Payment Failed",
+    description: `Your card payment for "${gig.gigTitle}" was unsuccessful.`,
+    type: "order",
+    targetRole: "buyer",
+  });
+    return next(new ErrorHandler("Stripe payment failed", 402));
+  }
 
-    // 📄 Add debit transaction
-    wallet.transactions.push({
-      type: "debit",
-      amount: totalAmount,
-      description: `Payment for order on gig "${gig.gigTitle}"`,
-    });
+  // Log transaction in wallet
+  wallet.transactions.push({
+    type: "debit",
+    amount: totalAmount,
+    description: `Payment via card for order on gig "${gig.gigTitle}"`,
+  });
 
-    await wallet.save();
+  await wallet.save();
+
+  // Attach payment details to order if needed
+  stripeCharge = {
+    id: paymentIntent.id,
+    amount: paymentIntent.amount,
+    currency: paymentIntent.currency,
+    status: paymentIntent.status,
+    payment_method: paymentIntent.payment_method,
+    receipt_url: paymentIntent.charges?.data?.[0]?.receipt_url || null,
+    created: paymentIntent.created,
+  };
+}
+
+
+ else {
+      return next(new ErrorHandler("Invalid payment method", 400));
+    }
 
 
 
@@ -131,6 +192,49 @@ export const createOrder = async (req, res, next) => {
       isPaid: true,
       paidAt: new Date(),
     });
+// 🔔 Notify Buyer - Order Created
+await Notification.create({
+  user: buyerId,
+  title: "Order Placed Successfully",
+  description: `You placed an order for "${gig.gigTitle}" (${packageType} package).`,
+  type: "order",
+  targetRole: "buyer",
+  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+});
+
+// 🔔 Notify Seller - New Order Received
+await Notification.create({
+  user: sellerId,
+  title: "New Order Received",
+  description: `A new order has been placed on your gig "${gig.gigTitle}".`,
+  type: "order",
+  targetRole: "seller",
+  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+});
+
+// 💳 Notify Buyer - Payment Success (only if paid via card)
+if (paymentMethod === 'card') {
+  await Notification.create({
+    user: buyerId,
+    title: "Payment Successful",
+    description: `Your card was charged $${totalAmount} for order on "${gig.gigTitle}".`,
+    type: "order",
+    targetRole: "buyer",
+    link: `http://dotask-service-marketplace.vercel.app/settings/billing`,
+  });
+}
+
+// 💳 Notify Buyer - Payment Success (wallet)
+if (paymentMethod === 'balance') {
+  await Notification.create({
+    user: buyerId,
+    title: "Payment from Wallet",
+    description: `You paid $${totalAmount} from your wallet for the order "${gig.gigTitle}".`,
+    type: "order",
+    targetRole: "buyer",
+    link: `http://dotask-service-marketplace.vercel.app/settings/billing`,
+  });
+}
 
     // Notify Buyer
     if (buyer?.email) {
@@ -172,22 +276,33 @@ export const createOrder = async (req, res, next) => {
       });
     }
 
-    return res.status(201).json({
-      success: true,
-      message: "Order placed successfully.",
-      order,
-      stripePayment: {
-    id: charge.id,
-    amount: charge.amount,
-    currency: charge.currency,
-    status: charge.status,
-    payment_method: charge.payment_method,
-    receipt_url: charge.receipt_url,
-    created: charge.created,
-  },
-    });
+return res.status(201).json({
+  success: true,
+  message: "Order placed successfully.",
+  order,
+  stripePayment: stripeCharge
+    ? {
+        id: stripeCharge.id,
+        amount: stripeCharge.amount,
+        currency: stripeCharge.currency,
+        status: stripeCharge.status,
+        payment_method: stripeCharge.payment_method,
+        receipt_url: stripeCharge.receipt_url,
+        created: stripeCharge.created,
+      }
+    : null,
+});
+
 
   } catch (error) {
+    await Notification.create({
+  user: buyerId,
+  title: "Order Failed",
+  description: `There was an error placing your order on "${gig?.gigTitle || "gig"}".`,
+  type: "order",
+  targetRole: "buyer",
+});
+
     console.error("❌ Error in createOrder:", error);
     next(error);
   }
@@ -206,8 +321,8 @@ export const getOrdersByUser = async (req, res, next) => {
 
     const orders = await Order.find(filter)
       .populate("gigId")
-      .populate("buyerId", "firstName lastName email")
-      .populate("sellerId", "firstName lastName email")
+      .populate("buyerId", "firstName lastName email country")
+      .populate("sellerId", "firstName lastName email country")
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -226,8 +341,8 @@ export const getAllOrders = async (req, res, next) => {
   try {
     const orders = await Order.find()
       .populate("gigId")
-      .populate("buyerId", "firstName lastName email")
-      .populate("sellerId", "firstName lastName email")
+      .populate("buyerId", "firstName lastName email country")
+      .populate("sellerId", "firstName lastName email country")
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -248,8 +363,8 @@ export const getOrderById = async (req, res, next) => {
 
     const order = await Order.findById(id)
       .populate("gigId")
-      .populate("buyerId", "firstName lastName email")
-      .populate("sellerId", "firstName lastName email")
+      .populate("buyerId", "firstName lastName email country")
+      .populate("sellerId", "firstName lastName email country")
       .populate("coworkers.sellerId", "firstName lastName email profileUrl _id");
 
     if (!order) {
@@ -354,6 +469,15 @@ export const deliverOrder = async (req, res, next) => {
 
     // Notify Buyer
     const buyer = order.buyerId;
+await Notification.create({
+  user: buyer._id,
+  title: "Order Delivered",
+  description: `Your order for "${order.gigId.gigTitle}" has been delivered.`,
+  type: "order",
+  targetRole: "buyer",
+  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+});
+
     if (buyer?.email) {
       const html = generateEmailTemplate({
         firstName: buyer.firstName,
@@ -372,7 +496,6 @@ export const deliverOrder = async (req, res, next) => {
         html,
       });
     }
-
     return res.status(200).json({
       success: true,
       message: "Order delivered successfully.",
@@ -409,6 +532,16 @@ export const approveFinalDelivery = async (req, res, next) => {
 
     // Notify Seller
     const seller = order.sellerId;
+// 🔔 Notify Seller - Final Delivery Approved
+await Notification.create({
+  user: seller._id,
+  title: "Order Completed",
+  description: `The buyer approved your final delivery for "${order.gigId.gigTitle}".`,
+  type: "order",
+  targetRole: "seller",
+  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+});
+
     if (seller?.email) {
       const html = generateEmailTemplate({
         firstName: seller.firstName,
@@ -486,7 +619,14 @@ export const addBuyerReview = async (req, res, next) => {
     };
 
     await order.save();
-
+await Notification.create({
+  user: order.sellerId,
+  title: "New Review Received",
+  description: `The buyer left a review on your gig "${order.gigId?.gigTitle || "Gig"}".`,
+  type: "review",
+  targetRole: "seller",
+  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+});
     res.status(200).json({
       success: true,
       message: "Buyer review submitted successfully.",
@@ -519,7 +659,14 @@ export const addSellerReview = async (req, res, next) => {
 
     order.sellerReview = { rating, review };
     await order.save();
-
+await Notification.create({
+  user: order.buyerId,
+  title: "You've Received a Review",
+  description: `The seller left a review for your order on "${order.gigId?.gigTitle || "Gig"}".`,
+  type: "review",
+  targetRole: "buyer",
+  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+});
     res.status(200).json({
       success: true,
       message: "Seller review submitted successfully.",
@@ -627,6 +774,16 @@ export const inviteCoworkersToOrder = async (req, res, next) => {
           subject: "Coworker Invitation",
           html,
         });
+
+        await Notification.create({
+  user: sellerId,
+  title: "You've Been Invited to Collaborate",
+  description: `You're invited to join the order for "${order.gigId.gigTitle}".`,
+  type: "coworker",
+  targetRole: "seller",
+  link: "https://dotask-service-marketplace.vercel.app/seller/my-coworking-space",
+});
+
       }
     }
 
@@ -698,6 +855,15 @@ export const handleCoworkerResponse = async (req, res, next) => {
         subject: `Coworker ${action === "accept" ? "Accepted" : "Rejected"} the Invitation`,
         html,
       });
+      await Notification.create({
+  user: mainSeller._id,
+  title: `Coworker ${action === "accept" ? "Accepted" : "Rejected"} Invitation`,
+  description: `${coworkerUser?.firstName} has ${action}ed your request to join the order for "${order.gigId?.gigTitle}".`,
+  type: "coworker",
+  targetRole: "seller",
+  link: "http://dotask-service-marketplace.vercel.app/seller/my-coworking-space",
+});
+
     }
 
     // ➤ Handle based on request type
@@ -732,7 +898,7 @@ export const getCoworkerOrders = async (req, res) => {
     })
       .populate("gigId", "gigTitle images")
       .populate("sellerId", "firstName lastName")
-      .populate("coworkers.sellerId", "firstName lastName profileUrl");
+      .populate("coworkers.sellerId", "firstName lastName profileUrl country");
 
     const results = orders.map((order) => {
       const coworker = order.coworkers.find(
@@ -835,6 +1001,15 @@ export const raiseResolutionRequest = async (req, res, next) => {
         subject,
         html,
       });
+      await Notification.create({
+  user: initiator._id,
+  title: "Resolution Request Submitted",
+  description: `You submitted a resolution request for Order ID ${order._id}.`,
+  type: "resolution",
+  targetRole: requestedBy.toString() === buyer._id.toString() ? "buyer" : "seller",
+  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+});
+
     }
 
     // Notify the recipient (action needed)
@@ -869,6 +1044,15 @@ export const raiseResolutionRequest = async (req, res, next) => {
         subject,
         html,
       });
+      await Notification.create({
+  user: recipient._id,
+  title: "Resolution Request Received",
+  description: `A resolution request has been raised for Order ID ${order._id}. Your response is needed.`,
+  type: "resolution",
+  targetRole: requestedBy.toString() === buyer._id.toString() ? "seller" : "buyer",
+  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+});
+
     }
 
     return res.status(200).json({
@@ -881,6 +1065,9 @@ export const raiseResolutionRequest = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
 export const respondToResolutionRequest = async (req, res, next) => {
   try {
     const { orderId } = req.params;
@@ -952,6 +1139,14 @@ export const respondToResolutionRequest = async (req, res, next) => {
         html,
       });
     }
+await Notification.create({
+  user: notifyUser._id,
+  title: `Resolution ${action === "accept" ? "Accepted" : "Rejected"}`,
+  description: `The ${isBuyer ? "buyer" : "seller"} has ${action}ed the resolution request for Order ID ${order._id}.`,
+  type: "resolution",
+  targetRole: isBuyer ? "seller" : "buyer",
+  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+});
 
     // Confirm to the responder
     const responder = isBuyer ? buyer : seller;
@@ -972,6 +1167,14 @@ export const respondToResolutionRequest = async (req, res, next) => {
         html,
       });
     }
+await Notification.create({
+  user: responder._id,
+  title: `You ${action === "accept" ? "Accepted" : "Rejected"} the Resolution`,
+  description: `You ${action}ed the resolution request for Order ID ${order._id}.`,
+  type: "resolution",
+  targetRole: isBuyer ? "buyer" : "seller",
+  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+});
 
     if (req.headers.accept?.includes("text/html")) {
       return res.send(`

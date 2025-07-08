@@ -1,6 +1,7 @@
 import ErrorHandler from "../middlewares/error.js";
 import { Category } from "../models/category.js";
 import { Gig } from "../models/gigs.js";
+import { Notification } from "../models/notification.js";
 import cloudinary from "../utils/cloudinary.js";
 import streamifier from "streamifier";
 
@@ -42,7 +43,15 @@ export const createCategory = async (req, res, next) => {
         ? subcategories.split(",").map((s) => s.trim())
         : [],
     });
-
+ 
+    await Notification.create({
+      user: req.user._id,
+      title: "New Category Created",
+      description: `Category "${name}" was successfully created.`,
+      type: "system",
+      targetRole: "superadmin",
+      link: "",
+    });
     res.status(201).json({
       success: true,
       message: "Category created successfully",
@@ -70,7 +79,14 @@ export const deleteCategory = async (req, res, next) => {
     }
 
     await Category.findByIdAndDelete(id);
-
+await Notification.create({
+      user: req.user._id,
+      title: "Category Deleted",
+      description: `Category "${category.name}" was deleted.`,
+      type: "system",
+      targetRole: "superadmin",
+      link: "",
+    });
     res.status(200).json({
       success: true,
       message: "Category deleted successfully",
@@ -153,6 +169,14 @@ export const updateCategory = async (req, res, next) => {
     }
 
     await category.save();
+ await Notification.create({
+      user: req.user._id,
+      title: "Category Updated",
+      description: `Category "${category.name}" was updated.`,
+      type: "system",
+      targetRole: "superadmin",
+      link: "",
+    });
 
     res.status(200).json({
       success: true,

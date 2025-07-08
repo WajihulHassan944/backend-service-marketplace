@@ -10,6 +10,7 @@ import jwt from "jsonwebtoken";
 import { transporter } from "../utils/mailer.js";
 import generateEmailTemplate from "../utils/emailTemplate.js";
 import nodemailer from "nodemailer";
+import { Notification } from "../models/notification.js";
 
 
 // Helper function to upload buffer and return full result (secure_url + public_id)
@@ -169,6 +170,16 @@ export const createGig = async (req, res, next) => {
       html: adminHtml,
     });
 
+await Notification.create({
+  user: userId,
+  title: "Gig Submitted",
+  description: `Your gig titled "${gigTitle}" was submitted and is under review.`,
+  type: "gig",
+  targetRole: "seller",
+  link: "http://dotask-service-marketplace.vercel.app/seller/services",
+});
+
+
     res.status(201).json({
       success: true,
       message: "Gig created successfully and sent for admin review.",
@@ -212,6 +223,14 @@ export const deleteGig = async (req, res, next) => {
     }
 
     await Gig.findByIdAndDelete(id);
+await Notification.create({
+  user: gig.userId,
+  title: "Gig Deleted",
+  description: `Your gig titled "${gig.gigTitle}" was deleted.`,
+  type: "gig",
+  targetRole: "seller",
+  link: "", // no link since the gig no longer exists
+});
 
     res.status(200).json({
       success: true,
@@ -348,6 +367,14 @@ export const updateGig = async (req, res, next) => {
         }),
       });
     }
+await Notification.create({
+  user: gig.userId,
+  title: "Gig Updated",
+  description: `Your gig titled "${gig.gigTitle}" was updated and is pending approval.`,
+  type: "gig",
+  targetRole: "seller",
+  link: "http://dotask-service-marketplace.vercel.app/seller/services",
+});
 
     res.status(200).json({
       success: true,
@@ -528,6 +555,29 @@ export const changeGigStatus = async (req, res, next) => {
         : status === "rejected"
         ? "Gig rejected successfully."
         : "Gig status set to pending.";
+
+        await Notification.create({
+  user: gig.userId,
+  title:
+    status === "active"
+      ? "Gig Approved"
+      : status === "rejected"
+      ? "Gig Rejected"
+      : "Gig Status Updated",
+  description:
+    status === "active"
+      ? `Your gig "${gig.gigTitle}" was approved and is now live.`
+      : status === "rejected"
+      ? `Your gig "${gig.gigTitle}" was rejected by the admin.`
+      : `Status of your gig "${gig.gigTitle}" was updated to "${status}".`,
+  type: "gig",
+  targetRole: "seller",
+  link:
+    status === "rejected"
+      ? ""
+      : "http://dotask-service-marketplace.vercel.app/seller/services",
+});
+
 
     return res.status(200).send(renderHtml(message, "success"));
   } catch (error) {

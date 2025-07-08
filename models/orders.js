@@ -99,6 +99,10 @@ sellerReview: {
       max: 5,
     },
     review: String,
+     createdAt: {
+    type: Date,
+    default: Date.now,
+  },
   },
 coworkers: [ 
   {
@@ -214,5 +218,40 @@ orderSchema.pre("save", async function (next) {
   }
   next();
 });
+
+
+orderSchema.post("save", async function (doc) {
+  const User = mongoose.model("User");
+
+  const seller = await User.findById(doc.sellerId);
+  if (!seller) return;
+
+  // Initialize nested structure if missing
+  if (!seller.sellerDetails) seller.sellerDetails = {};
+
+  // Increment/decrement completedOrdersCount
+  if (doc.status === "completed") {
+    seller.sellerDetails.completedOrdersCount = (seller.sellerDetails.completedOrdersCount || 0) + 1;
+  }
+
+  if (doc.status === "cancelled" && seller.sellerDetails.completedOrdersCount > 0) {
+    seller.sellerDetails.completedOrdersCount -= 1;
+  }
+
+  // Update level based on count
+  const count = seller.sellerDetails.completedOrdersCount;
+  if (count >= 50) {
+    seller.sellerDetails.level = "Top Rated";
+  } else if (count >= 20) {
+    seller.sellerDetails.level = "Level 2";
+  } else if (count >= 5) {
+    seller.sellerDetails.level = "Level 1";
+  } else {
+    seller.sellerDetails.level = "New Seller";
+  }
+
+  await seller.save();
+});
+
 
 export const Order = mongoose.model("Order", orderSchema);

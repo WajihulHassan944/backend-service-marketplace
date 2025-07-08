@@ -55,8 +55,8 @@ export const postMessage = async (req, res, next) => {
     await conversation.save();
 
     // 🔴 Trigger Pusher event for real-time updates
-    const channelName = 'marketplace';
-    pusher.trigger(channelName, "new-message", {
+   const channelName = 'marketplace';
+    const pusherResponse = await pusher.trigger(channelName, "new-message", {
       message: populatedMessage,
     });
 
@@ -64,6 +64,7 @@ export const postMessage = async (req, res, next) => {
       success: true,
       message: "Message sent successfully",
       data: populatedMessage,
+      pusherTriggered: pusherResponse === null,
     });
   } catch (error) {
     if (error.code === 11000) {
