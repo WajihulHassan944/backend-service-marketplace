@@ -29,36 +29,28 @@ const gigSchema = new mongoose.Schema({
     default: [],
   },
 
-  // Scope & Pricing
-  packages: {
-    basic: {
-      packageName: String,
-      description: String,
-      price: Number,
-      deliveryTime: Number,
-      revisions: Number,
-      numberOfPages: Number,
-      afterProjectSupport: Boolean,
-    },
-    standard: {
-      packageName: String,
-      description: String,
-      price: Number,
-      deliveryTime: Number,
-      revisions: Number,
-      numberOfPages: Number,
-      afterProjectSupport: Boolean,
-    },
-    premium: {
-      packageName: String,
-      description: String,
-      price: Number,
-      deliveryTime: Number,
-      revisions: Number,
-      numberOfPages: Number,
-      afterProjectSupport: Boolean,
-    },
+ packages: {
+  basic: {
+    type: mongoose.Schema.Types.Mixed,
+    required: false,
+    default: undefined,
   },
+  standard: {
+    type: mongoose.Schema.Types.Mixed,
+    required: false,
+    default: undefined,
+  },
+  premium: {
+    type: mongoose.Schema.Types.Mixed,
+    required: false,
+    default: undefined,
+  },
+},
+offerPackages: {
+  type: Boolean,
+  default: true,
+},
+
   status: {
     type: String,
     enum: ["pending", "active", "rejected"],

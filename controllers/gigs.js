@@ -4,7 +4,8 @@ import ErrorHandler from "../middlewares/error.js";
 import { v4 as uuidv4 } from "uuid";
 import cloudinary from "../utils/cloudinary.js";
 import { User } from "../models/user.js"; // Make sure this is already at the top
-
+import { Order } from "../models/orders.js";
+import { formatDistanceToNow } from 'date-fns'; // Make sure date-fns is installed
 import fetch from "node-fetch";
 import jwt from "jsonwebtoken";
 import { transporter } from "../utils/mailer.js";
@@ -12,6 +13,11 @@ import generateEmailTemplate from "../utils/emailTemplate.js";
 import nodemailer from "nodemailer";
 import { Notification } from "../models/notification.js";
 
+
+const timeAgo = (date) => {
+  if (!date) return null;
+  return formatDistanceToNow(new Date(date), { addSuffix: true }); // e.g. "2 weeks ago"
+};
 
 // Helper function to upload buffer and return full result (secure_url + public_id)
 const uploadToCloudinary = (buffer, folder = "gig_images", resource_type = "image") => {
@@ -62,6 +68,7 @@ export const createGig = async (req, res, next) => {
       gigDescription,
       hourlyRate,
       videoIframes,
+      offerPackages
     } = req.body;
 
     console.log("🔍 req.body:", req.body);
@@ -106,6 +113,7 @@ export const createGig = async (req, res, next) => {
       packages: JSON.parse(packages),
       gigDescription,
       hourlyRate,
+      offerPackages,
       images,
       videoIframes: JSON.parse(videoIframes || "[]"),
       pdf,
@@ -260,6 +268,7 @@ export const updateGig = async (req, res, next) => {
       gigDescription,
       hourlyRate,
       videoIframes,
+      offerPackages,
     } = req.body;
 
     // Handle image uploads
@@ -300,6 +309,7 @@ export const updateGig = async (req, res, next) => {
 
     // Update fields
     if (gigTitle !== undefined) gig.gigTitle = gigTitle;
+    if (offerPackages !== undefined) gig.offerPackages = offerPackages;
     if (category !== undefined) gig.category = category;
     if (subcategory !== undefined) gig.subcategory = subcategory;
     if (searchTag !== undefined) gig.searchTag = searchTag;
@@ -587,12 +597,11 @@ export const changeGigStatus = async (req, res, next) => {
 };
 
 
-
 export const getGigById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const gig = await Gig.findById(id);
+    const gig = await Gig.findById(id).populate('userId');
     if (!gig) {
       return res.status(404).json({
         success: false,
@@ -600,19 +609,29 @@ export const getGigById = async (req, res, next) => {
       });
     }
 
-    // Fetch user by gig.userId
-    const user = await User.findById(gig.userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found for this gig",
-      });
-    }
+    // Fetch buyer reviews where this gig's user is the seller
+    const buyerReviewOrders = await Order.find({
+      sellerId: gig.userId,
+      'buyerReview.review': { $exists: true, $ne: '' }
+    }).populate("buyerId", "firstName lastName email profileUrl country");
+
+    const buyerReviews = buyerReviewOrders.map(order => ({
+      ...order.buyerReview,
+      timeAgo: timeAgo(order.buyerReview.createdAt),
+      reviewedByBuyer: {
+        _id: order.buyerId._id,
+        firstName: order.buyerId.firstName,
+        lastName: order.buyerId.lastName,
+        email: order.buyerId.email,
+        profileUrl: order.buyerId.profileUrl || null,
+        country: order.buyerId.country || null,
+      }
+    }));
 
     res.status(200).json({
       success: true,
       gig,
-      user,
+      buyerReviews,
     });
   } catch (error) {
     console.error("❌ Error in getGigById:", error);

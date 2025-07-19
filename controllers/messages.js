@@ -2,8 +2,34 @@ import { Message } from "../models/messages.js";
 import { Conversation } from "../models/conversation.js";
 import { User } from "../models/user.js";
 import ErrorHandler from "../middlewares/error.js";
+import { pusher } from "../utils/pusher.js";
+import streamifier from "streamifier";
+import cloudinary from "../utils/cloudinary.js";
 import mongoose from "mongoose";
-import { pusher } from "../utils/pusher.js"; // Import Pusher instance
+const uploadToCloudinary = (buffer, originalName = "file") => {
+  return new Promise((resolve, reject) => {
+    const resource_type = "auto";
+
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: "chat_attachments",
+        resource_type,
+        use_filename: true,
+        unique_filename: true,
+        overwrite: false,
+      },
+      (error, result) => {
+        if (result) {
+          resolve({ url: result.secure_url, public_id: result.public_id });
+        } else {
+          reject(error);
+        }
+      }
+    );
+
+    streamifier.createReadStream(buffer).pipe(stream);
+  });
+};
 
 export const postMessage = async (req, res, next) => {
   try {
@@ -27,16 +53,27 @@ export const postMessage = async (req, res, next) => {
         ? [senderId, receiverId]
         : [receiverId, senderId];
 
-    let conversation = await Conversation.findOne({
-      participantOne,
-      participantTwo,
-    });
+    let conversation = await Conversation.findOne({ participantOne, participantTwo });
 
     if (!conversation) {
-      conversation = await Conversation.create({
-        participantOne,
-        participantTwo,
-      });
+      conversation = await Conversation.create({ participantOne, participantTwo });
+    }
+
+    const attachments = [];
+
+    if (req.files && req.files.length > 0) {
+      if (req.files.length > 3) {
+        return next(new ErrorHandler("Maximum of 3 attachments allowed", 400));
+      }
+
+      for (const file of req.files) {
+        if (file.size > 5 * 1024 * 1024) {
+          return next(new ErrorHandler("Each file must be under 5MB", 400));
+        }
+
+        const uploaded = await uploadToCloudinary(file.buffer, file.originalname);
+        attachments.push(uploaded);
+      }
     }
 
     const newMessage = await Message.create({
@@ -44,6 +81,7 @@ export const postMessage = async (req, res, next) => {
       senderId,
       receiverId,
       message,
+      attachments,
     });
 
     const populatedMessage = await Message.findById(newMessage._id)
@@ -54,8 +92,8 @@ export const postMessage = async (req, res, next) => {
     conversation.lastUpdated = new Date();
     await conversation.save();
 
-    // 🔴 Trigger Pusher event for real-time updates
-   const channelName = 'marketplace';
+    // ✅ ORIGINAL PUSHER LOGIC
+    const channelName = 'marketplace';
     const pusherResponse = await pusher.trigger(channelName, "new-message", {
       message: populatedMessage,
     });
@@ -67,15 +105,10 @@ export const postMessage = async (req, res, next) => {
       pusherTriggered: pusherResponse === null,
     });
   } catch (error) {
-    if (error.code === 11000) {
-      return next(
-        new ErrorHandler("Duplicate conversation detected. Please try again.", 409)
-      );
-    }
-
     return next(error);
   }
 };
+
 
 
 

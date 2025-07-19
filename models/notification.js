@@ -24,7 +24,7 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["system", "order", "custom", "note", "portfolio", "gig", "coworker"],
+    enum: ["system", "order", "custom", "note", "portfolio", "gig", "coworker", "debit", "review", "resolution", "credit"],
     default: "custom",
   },
    targetRole: {

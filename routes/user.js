@@ -14,7 +14,7 @@ router.get("/userdetails", isAuthenticated, getMyProfile);
 router.get("/all", getAllUsers);
 router.delete("/admin/delete-user/:id", deleteUserById);
 router.get("/buyers", isAuthenticatedSuperAdmin, getAllBuyers);
-router.get("/sellers", isAuthenticatedSuperAdmin, getAllSellers);
+router.get("/sellers", getAllSellers);
 router.get("/admins", isAuthenticatedSuperAdmin, getAllAdmins);
 router.put("/:id/block", isAuthenticatedSuperAdmin, blockUser);
 router.put("/:id/unblock", isAuthenticatedSuperAdmin, unblockUser);

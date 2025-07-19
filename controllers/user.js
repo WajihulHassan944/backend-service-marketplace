@@ -1523,7 +1523,6 @@ const portfolios = await Portfolio.find({ user: userId }).lean();
 };
 
 
-
 export const getAllPublicSellerProfiles = async (req, res, next) => {
   try {
     // 🔍 Find all users who are sellers
@@ -1538,29 +1537,37 @@ export const getAllPublicSellerProfiles = async (req, res, next) => {
 
     const sellerProfiles = await Promise.all(
       sellers.map(async (user) => {
-        const orders = await Order.find({
+        // Get all orders with seller review
+        const ratedOrders = await Order.find({
           sellerId: user._id,
           "sellerReview.rating": { $exists: true }
         }).select("sellerReview.rating");
 
+        // Get only completed orders
+        const completedOrdersCount = await Order.countDocuments({
+          sellerId: user._id,
+          status: "completed"
+        });
+
         let averageRating = "0.0";
         let totalReviews = "No reviews yet";
 
-        if (orders.length > 0) {
-          const total = orders.reduce((sum, order) => sum + order.sellerReview.rating, 0);
-          averageRating = (total / orders.length).toFixed(1);
-          totalReviews = orders.length;
+        if (ratedOrders.length > 0) {
+          const total = ratedOrders.reduce((sum, order) => sum + order.sellerReview.rating, 0);
+          averageRating = (total / ratedOrders.length).toFixed(1);
+          totalReviews = ratedOrders.length;
         }
 
         return {
-          _id:user._id,
+          _id: user._id,
           firstName: user.firstName,
           lastName: user.lastName,
           profileUrl: user.profileUrl,
           speciality: user.sellerDetails?.speciality || null,
           level: user.sellerDetails?.level || "New Seller",
-          totalReviews,
           averageRating,
+          totalReviews,
+          ordersCompletedCount: completedOrdersCount
         };
       })
     );
@@ -1581,18 +1588,18 @@ export const searchUsers = async (req, res) => {
   try {
     const { q } = req.query;
 
-    let users;
+    const sellerQuery = { role: { $in: ['seller'] } };
 
+    let users;
     if (!q || q.trim() === '') {
-      // 🔍 No search query, return all sellers
-      users = await User.find({ role: 'seller' })
+      users = await User.find(sellerQuery)
         .select('_id firstName lastName userName email profileUrl country sellerDetails');
     } else {
       const query = q.trim();
-      const regex = new RegExp(query, 'i'); // case-insensitive match
+      const regex = new RegExp(query, 'i');
 
       users = await User.find({
-        role: 'seller',
+        ...sellerQuery,
         $or: [
           { firstName: regex },
           { lastName: regex },
@@ -1600,11 +1607,42 @@ export const searchUsers = async (req, res) => {
           { email: regex },
           { 'sellerDetails.speciality': regex },
           { 'sellerDetails.skills': regex },
+          {
+            $expr: {
+              $regexMatch: {
+                input: { $concat: ['$firstName', ' ', '$lastName'] },
+                regex: query,
+                options: 'i',
+              },
+            },
+          },
         ],
       }).select('_id firstName lastName userName email profileUrl country sellerDetails');
     }
 
-    res.status(200).json({ success: true, users });
+    const usersWithAnalytics = await Promise.all(users.map(async (user) => {
+      const completedOrders = await Order.find({ sellerId: user._id, status: 'completed' });
+
+      const ratings = completedOrders
+        .map(order => order?.buyerReview?.overallRating)
+        .filter(r => typeof r === 'number');
+
+      const reviewCount = ratings.length;
+
+      const averageRating =
+        reviewCount > 0
+          ? parseFloat((ratings.reduce((sum, r) => sum + r, 0) / reviewCount).toFixed(1))
+          : null;
+
+      return {
+        ...user.toObject(),
+        averageRating,
+        reviewCount,
+        ordersCompletedCount: completedOrders.length,
+      };
+    }));
+
+    res.status(200).json({ success: true, users: usersWithAnalytics });
   } catch (error) {
     console.error('Search error:', error);
     res.status(500).json({ success: false, message: 'Server error while searching users.' });

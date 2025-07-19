@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
 
+function attachmentLimit(val) {
+  return val.length <= 3;
+}
+
 const messageSchema = new mongoose.Schema({
   conversationId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -15,6 +19,15 @@ const messageSchema = new mongoose.Schema({
   message: {
     type: String,
     required: true,
+  },
+   attachments: {
+    type: [
+      {
+        url: String,
+        public_id: String,
+      }
+    ],
+    validate: [attachmentLimit, '{PATH} exceeds the limit of 3'],
   },
   isRead: {
     type: Boolean,
