@@ -777,7 +777,15 @@ const sendSellerApprovalEmail = async (user) => {
 
   const approvalLink = `https://backend-service-marketplace.vercel.app/api/users/verify/${user._id}`;
 
-  const { linkedUrl, speciality } = user.sellerDetails || {};
+  const {
+    linkedUrl,
+    speciality,
+    completedOrdersCount,
+    description,
+    skills,
+    personalPortfolio,
+    resume,
+  } = user.sellerDetails || {};
 
   const mailOptions = {
     from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
@@ -787,11 +795,16 @@ const sendSellerApprovalEmail = async (user) => {
       firstName: "Admin",
       subject: "New Seller Registration",
       content: `
-        <p><strong>${user.firstName} ${user.lastName}</strong> has registered as a <strong>seller</strong>.</p>
+        <p><strong>${user.firstName} ${user.lastName || ""}</strong> has registered as a <strong>seller</strong>.</p>
         <p><strong>Email:</strong> ${user.email}</p>
-        <p><strong>Country:</strong> ${user.country}</p>
+        <p><strong>Country:</strong> ${user.country || "N/A"}</p>
         ${linkedUrl ? `<p><strong>LinkedIn:</strong> <a href="${linkedUrl}" target="_blank">${linkedUrl}</a></p>` : ""}
         ${speciality ? `<p><strong>Speciality:</strong> ${speciality}</p>` : ""}
+        <p><strong>Completed Orders:</strong> ${completedOrdersCount || 0}</p>
+        ${description ? `<p><strong>Description:</strong> ${description}</p>` : ""}
+        ${skills?.length ? `<p><strong>Skills:</strong> ${skills.join(", ")}</p>` : ""}
+        ${personalPortfolio ? `<p><strong>Portfolio:</strong> <a href="${personalPortfolio}" target="_blank">${personalPortfolio}</a></p>` : ""}
+        ${resume ? `<p><strong>Resume:</strong> <a href="${resume}" target="_blank">${resume}</a></p>` : ""}
         <div style="margin:30px 0;text-align:center;">
           <a href="${approvalLink}" style="display:inline-block;padding:12px 25px;background-color:#28a745;color:#fff;text-decoration:none;border-radius:5px;font-size:16px;">
             Approve Seller
@@ -803,6 +816,7 @@ const sendSellerApprovalEmail = async (user) => {
 
   await transporter.sendMail(mailOptions);
 };
+
 
 
 export const verifyUser = async (req, res, next) => {

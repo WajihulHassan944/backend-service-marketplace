@@ -12,6 +12,7 @@ import { transporter } from "../utils/mailer.js";
 import generateEmailTemplate from "../utils/emailTemplate.js";
 import nodemailer from "nodemailer";
 import { Notification } from "../models/notification.js";
+import { Client } from "../models/clients.js";
 
 
 const timeAgo = (date) => {
@@ -628,10 +629,14 @@ export const getGigById = async (req, res, next) => {
       }
     }));
 
+    // 🆕 Fetch clients of this seller
+    const clients = await Client.find({ user: gig.userId }).select("name country profileUrl createdAt");
+
     res.status(200).json({
       success: true,
       gig,
       buyerReviews,
+      clients, // appended here
     });
   } catch (error) {
     console.error("❌ Error in getGigById:", error);
