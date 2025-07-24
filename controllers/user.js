@@ -433,13 +433,39 @@ export const register = async (req, res, next) => {
     if (existingUser && role === "seller") {
       const updateData = {};
 
-      if (sellerDetails?.linkedUrl || sellerDetails?.speciality) {
-        updateData.sellerDetails = {
-          ...existingUser.sellerDetails,
-          ...(sellerDetails?.linkedUrl && { linkedUrl: sellerDetails.linkedUrl }),
-          ...(sellerDetails?.speciality && { speciality: sellerDetails.speciality }),
-        };
-      }
+  if (
+  sellerDetails?.linkedUrl ||
+  sellerDetails?.speciality ||
+  sellerDetails?.description ||
+  sellerDetails?.personalPortfolio ||
+  req.files?.resume?.[0]
+) {
+  updateData.sellerDetails = {
+    ...existingUser.sellerDetails,
+    ...(sellerDetails?.linkedUrl && { linkedUrl: sellerDetails.linkedUrl }),
+    ...(sellerDetails?.speciality && { speciality: sellerDetails.speciality }),
+    ...(sellerDetails?.description && { description: sellerDetails.description }),
+    ...(sellerDetails?.personalPortfolio && { personalPortfolio: sellerDetails.personalPortfolio }),
+  };
+
+  // Upload resume if provided
+  if (req.files?.resume?.[0]) {
+    const bufferStream = streamifier.createReadStream(req.files.resume[0].buffer);
+    const cloudinaryResume = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: "user_resumes", resource_type: "raw" },
+        (error, result) => {
+          if (result) resolve(result);
+          else reject(error);
+        }
+      );
+      bufferStream.pipe(stream);
+    });
+
+    updateData.sellerDetails.resume = cloudinaryResume.secure_url;
+  }
+}
+
 
       if (!existingUser.role.includes("seller")) {
         updateData.role = [...existingUser.role, "seller"];
@@ -484,20 +510,37 @@ if (role === "seller") {
 
 
     let profileUrl = "";
-    if (req.file) {
-      const bufferStream = streamifier.createReadStream(req.file.buffer);
-      const cloudinaryUpload = await new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-          { folder: "user_profiles" },
-          (error, result) => {
-            if (result) resolve(result);
-            else reject(error);
-          }
-        );
-        bufferStream.pipe(stream);
-      });
-      profileUrl = cloudinaryUpload.secure_url;
-    }
+   if (req.files?.profileImage?.[0]) {
+  const bufferStream = streamifier.createReadStream(req.files.profileImage[0].buffer);
+  const cloudinaryUpload = await new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: "user_profiles" },
+      (error, result) => {
+        if (result) resolve(result);
+        else reject(error);
+      }
+    );
+    bufferStream.pipe(stream);
+  });
+  profileUrl = cloudinaryUpload.secure_url;
+}
+
+let resumeUrl = "";
+if (req.files?.resume?.[0]) {
+  const bufferStream = streamifier.createReadStream(req.files.resume[0].buffer);
+  const cloudinaryResume = await new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: "user_resumes", resource_type: "raw" },
+      (error, result) => {
+        if (result) resolve(result);
+        else reject(error);
+      }
+    );
+    bufferStream.pipe(stream);
+  });
+  resumeUrl = cloudinaryResume.secure_url;
+}
+
 
     const isAdmin = roles.includes("admin");
     const isSeller = roles.includes("seller");
@@ -514,11 +557,15 @@ if (role === "seller") {
       verified: isSeller ? false : isAdmin || false,
     };
 
-    if (isSeller && sellerDetails) {
-      newUserData.sellerDetails = {};
-      if (sellerDetails.linkedUrl) newUserData.sellerDetails.linkedUrl = sellerDetails.linkedUrl;
-      if (sellerDetails.speciality) newUserData.sellerDetails.speciality = sellerDetails.speciality;
-    }
+   if (isSeller && sellerDetails) {
+  newUserData.sellerDetails = {};
+  if (sellerDetails.linkedUrl) newUserData.sellerDetails.linkedUrl = sellerDetails.linkedUrl;
+  if (sellerDetails.speciality) newUserData.sellerDetails.speciality = sellerDetails.speciality;
+  if (sellerDetails.description) newUserData.sellerDetails.description = sellerDetails.description;
+  if (sellerDetails.personalPortfolio) newUserData.sellerDetails.personalPortfolio = sellerDetails.personalPortfolio;
+  if (resumeUrl) newUserData.sellerDetails.resume = resumeUrl;
+}
+
 
     const user = await User.create(newUserData);
 

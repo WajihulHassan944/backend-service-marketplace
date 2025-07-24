@@ -5,7 +5,11 @@ import upload from "../middlewares/upload.js";
 
 const router = express.Router();
 
-router.post('/register', upload.single('profileImage'), register);
+router.post('/register', upload.fields([
+  { name: 'profileImage', maxCount: 1 },
+  { name: 'resume', maxCount: 1 }
+]), register);
+
 router.post("/google-login", googleLogin);
 router.post("/google-register", googleRegister);
 router.post("/login", login);

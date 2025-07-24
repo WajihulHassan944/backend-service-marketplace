@@ -74,6 +74,14 @@ sellerDetails: {
     type: [String],
     default: [],
   },
+   personalPortfolio: {
+    type: String,
+    required: false,
+  },
+  resume: {
+    type: String,
+    required: false,
+  },
 },
   verified: {
     type: Boolean,
