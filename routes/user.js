@@ -2,11 +2,10 @@ import express from "express";
 import { allAvailableSellers, blockUser, deleteUserById, getAllAdmins, getAllBuyers, getAllSellers, getAllUsers, getMyProfile, getAllPublicSellerProfiles, getSellerProfileData, getUserById, getWishlistGigs, googleLogin, googleRegister, login, logout, register, requestSellerRole, resetPasswordConfirm, resetPasswordRequest, sellerRequest, toggleWishlist, unblockUser, updateAvailabilityStatus, updateProfile, verifyEmail, verifyUser, searchUsers, changePasswordDirectly } from "../controllers/user.js";
 import { isAuthenticated, isAuthenticatedSuperAdmin } from "../middlewares/auth.js";
 import upload from "../middlewares/upload.js";
-import gigUpload from "../middlewares/gigUpload.js";
 
 const router = express.Router();
 
-router.post('/register', gigUpload.fields([
+router.post('/register', upload.fields([
   { name: 'profileImage', maxCount: 1 },
   { name: 'resume', maxCount: 1 }
 ]), register);

@@ -451,9 +451,18 @@ export const register = async (req, res, next) => {
   // Upload resume if provided
   if (req.files?.resume?.[0]) {
     const bufferStream = streamifier.createReadStream(req.files.resume[0].buffer);
-    const cloudinaryResume = await new Promise((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        { folder: "user_resumes", resource_type: "raw" },
+  const cloudinaryResume = await new Promise((resolve, reject) => {
+  const stream = cloudinary.uploader.upload_stream(
+    {
+      folder: "user_resumes",
+      resource_type: "raw",
+      format: "pdf",
+      public_id: `user_resumes/${Date.now()}-${existingUser.firstName || "resume"}.pdf`,
+      use_filename: true,
+      unique_filename: false,
+      overwrite: true,
+    },
+
         (error, result) => {
           if (result) resolve(result);
           else reject(error);
@@ -528,9 +537,18 @@ if (role === "seller") {
 let resumeUrl = "";
 if (req.files?.resume?.[0]) {
   const bufferStream = streamifier.createReadStream(req.files.resume[0].buffer);
-  const cloudinaryResume = await new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      { folder: "user_resumes", resource_type: "raw" },
+const cloudinaryResume = await new Promise((resolve, reject) => {
+  const stream = cloudinary.uploader.upload_stream(
+    {
+      folder: "user_resumes",
+      resource_type: "raw",
+      format: "pdf",
+      public_id: `user_resumes/${Date.now()}-${existingUser.firstName || "resume"}.pdf`,
+      use_filename: true,
+      unique_filename: false,
+      overwrite: true,
+    },
+
       (error, result) => {
         if (result) resolve(result);
         else reject(error);
