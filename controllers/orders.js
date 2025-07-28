@@ -9,7 +9,7 @@ import cloudinary from "../utils/cloudinary.js";
 import { Wallet } from "../models/wallet.js";
 import stripe from "../utils/stripe.js";
 import { Notification } from "../models/notification.js";
-
+import mongoose from "mongoose";
 
 const uploadToCloudinary = (buffer, originalName = "file") => {
   return new Promise((resolve, reject) => {
@@ -47,7 +47,19 @@ export const createOrder = async (req, res, next) => {
    let gig;
   try {
    
-    const { gigId, buyerId, sellerId, packageType, requirements, totalAmount, paymentMethod } = req.body;
+   const { 
+  gigId, 
+  buyerId, 
+  sellerId, 
+  packageType, 
+  requirements, 
+  totalAmount, 
+  paymentMethod, 
+  customDescription, 
+  customDeliveryTime ,
+referrerId
+} = req.body;
+console.log(referrerId);
 
     if (!gigId || !buyerId || !sellerId || !packageType || !requirements || !totalAmount) {
       return next(new ErrorHandler("Missing required fields", 400));
@@ -61,8 +73,25 @@ export const createOrder = async (req, res, next) => {
       return next(new ErrorHandler("Seller ID does not match the gig's owner", 403));
     }
 
-    const selectedPackage = gig.packages[packageType];
-    if (!selectedPackage) return next(new ErrorHandler("Invalid package type", 400));
+ let selectedPackage;
+
+if (packageType === 'custom') {
+  if (!customDescription || !customDeliveryTime) {
+    return next(new ErrorHandler("Missing custom offer details", 400));
+  }
+
+  selectedPackage = {
+    packageName: 'Custom Offer',
+    description: customDescription,
+    price: totalAmount,
+    deliveryTime: customDeliveryTime,
+    revisions: 5
+  };
+} else {
+  selectedPackage = gig.packages[packageType];
+  if (!selectedPackage) return next(new ErrorHandler("Invalid package type", 400));
+}
+
 
     // Fetch users
     const buyer = await User.findById(buyerId);
@@ -189,6 +218,7 @@ export const createOrder = async (req, res, next) => {
       requirements,
       totalAmount,
       files: uploadedFiles,
+      referrer: referrerId,
       isPaid: true,
       paidAt: new Date(),
     });
@@ -196,7 +226,7 @@ export const createOrder = async (req, res, next) => {
 await Notification.create({
   user: buyerId,
   title: "Order Placed Successfully",
-  description: `You placed an order for "${gig.gigTitle}" (${packageType} package).`,
+ description: `You placed an order for "${gig.gigTitle}" (${selectedPackage.packageName}).`,
   type: "order",
   targetRole: "buyer",
   link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
@@ -295,13 +325,7 @@ return res.status(201).json({
 
 
   } catch (error) {
-    await Notification.create({
-  user: buyerId,
-  title: "Order Failed",
-  description: `There was an error placing your order on "${gig?.gigTitle || "gig"}".`,
-  type: "order",
-  targetRole: "buyer",
-});
+   
 
     console.error("❌ Error in createOrder:", error);
     next(error);
@@ -509,7 +533,6 @@ await Notification.create({
 };
 
 
-
 export const approveFinalDelivery = async (req, res, next) => {
   try {
     const { orderId } = req.params;
@@ -530,17 +553,47 @@ export const approveFinalDelivery = async (req, res, next) => {
     order.status = "completed";
     await order.save();
 
+    // Handle referral reward 👇
+    if (order.referrer) {
+      const Wallet = mongoose.model("Wallet");
+      let wallet = await Wallet.findOne({ userId: order.referrer });
+
+      if (!wallet) {
+        wallet = new Wallet({ userId: order.referrer, balance: 0 });
+      }
+
+      const rewardAmount = 1; // $1 or 1 credit
+
+      wallet.balance += rewardAmount;
+
+      wallet.transactions.push({
+        type: "credit",
+        amount: rewardAmount,
+        description: `Referral reward for order by user ${order.buyerId}`,
+        createdAt: new Date(),
+      });
+
+      wallet.referrals.push({
+        referredUser: { _id: order.buyerId },
+        orderId: order._id,
+        creditsEarned: rewardAmount,
+        date: new Date(),
+      });
+
+      await wallet.save();
+    }
+
     // Notify Seller
     const seller = order.sellerId;
-// 🔔 Notify Seller - Final Delivery Approved
-await Notification.create({
-  user: seller._id,
-  title: "Order Completed",
-  description: `The buyer approved your final delivery for "${order.gigId.gigTitle}".`,
-  type: "order",
-  targetRole: "seller",
-  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
-});
+
+    await Notification.create({
+      user: seller._id,
+      title: "Order Completed",
+      description: `The buyer approved your final delivery for "${order.gigId.gigTitle}".`,
+      type: "order",
+      targetRole: "seller",
+      link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+    });
 
     if (seller?.email) {
       const html = generateEmailTemplate({
@@ -566,7 +619,6 @@ await Notification.create({
       message: "Final delivery approved. Order marked as completed.",
       order,
     });
-
   } catch (error) {
     console.error("❌ Error in approveFinalDelivery:", error);
     next(error);

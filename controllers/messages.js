@@ -248,27 +248,33 @@ export const markMessagesAsRead = async (req, res, next) => {
   }
 };
 
-
 export const deleteMessage = async (req, res, next) => {
   try {
     const { messageId, userId } = req.body;
 
-    const message = await Message.findById(messageId);
-    if (!message) return next(new ErrorHandler("Message not found", 404));
+    // Validate inputs
+    if (!messageId || !userId) {
+      return next(new ErrorHandler("Message ID and User ID are required", 400));
+    }
 
-    if (message.senderId.toString() === userId) {
-      message.isDeletedBySender = true;
-    } else if (message.receiverId?.toString() === userId) {
-      message.isDeletedByReceiver = true;
-    } else {
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return next(new ErrorHandler("Message not found", 404));
+    }
+
+    // Only sender can delete the message permanently (if that's your rule)
+    if (message.senderId.toString() !== userId) {
       return next(new ErrorHandler("Unauthorized", 403));
     }
 
-    await message.save();
+    await message.deleteOne();
+
+    // Notify clients via Pusher
+    pusher.trigger('marketplace', 'delete-message', { messageId });
 
     res.status(200).json({
       success: true,
-      message: "Message deleted successfully",
+      message: "Message deleted permanently",
     });
   } catch (error) {
     next(error);
@@ -308,6 +314,35 @@ export const getAllConversationsWithMessages = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: detailedConversations,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateMessageContent = async (req, res, next) => {
+  try {
+    const { messageId, newContent } = req.body;
+
+    if (!messageId || !newContent) {
+      return next(new ErrorHandler("messageId and newContent are required", 400));
+    }
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return next(new ErrorHandler("Message not found", 404));
+    }
+
+    message.message = newContent;
+    await message.save();
+
+    // Optional: Notify clients if needed
+    pusher.trigger("marketplace", "message-updated", { message });
+
+
+    res.status(200).json({
+      success: true,
+      message: "Message updated successfully",
     });
   } catch (error) {
     next(error);

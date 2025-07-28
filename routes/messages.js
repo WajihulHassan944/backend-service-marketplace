@@ -7,6 +7,7 @@ import {
   deleteMessage,
   getAllConversationsWithMessages,
   getConversationPartners,
+  updateMessageContent,
 } from "../controllers/messages.js";
 import orderUpload from "../middlewares/orderUpload.js"; // 👈 import multer middleware
 
@@ -18,7 +19,8 @@ router.post("/add", orderUpload.array("attachments", 3), postMessage);
 router.get("/conversations/:userId", getUserConversations);
 router.get("/conversation/:conversationId", getMessagesByConversationId);
 router.put("/mark-read", markMessagesAsRead);
-router.delete("/delete", deleteMessage);
+router.post("/delete", deleteMessage);
+router.put("/update", updateMessageContent);
 router.get("/all-conversations/:userId", getAllConversationsWithMessages);
 router.get("/user-conversations/:userId", getConversationPartners);
 

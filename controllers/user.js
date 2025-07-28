@@ -58,7 +58,30 @@ export const googleRegister = async (req, res, next) => {
       isNotificationsEnabled: true,
       isSubscribed: true,
       isAgreed: true,
+       referrer: req.body.referrerId || null
     });
+
+   // ✅ Notify referrer (if any) via email
+    if (req.body.referrerId) {
+      const referrer = await User.findById(req.body.referrerId);
+      if (referrer) {
+        await transporter.sendMail({
+          from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+          to: referrer.email,
+          subject: "🙌 Someone Used Your Referral!",
+          html: generateEmailTemplate({
+            firstName: referrer.firstName,
+            subject: "Someone Used Your Referral!",
+            content: `
+              <p>Good news! A new user just signed up using your referral link.</p>
+              <p>Once they complete their first order, you'll receive your referral reward automatically in your wallet.</p>
+              <p>Thanks for helping grow the Service Marketplace community!</p>
+            `,
+          }),
+        });
+      }
+    }
+
 
   // ✅ Initialize Stripe Customer and Wallet
     const stripeCustomer = await stripe.customers.create({
@@ -416,7 +439,7 @@ export const requestSellerRole = async (req, res, next) => {
 };
 
 export const register = async (req, res, next) => {
-  try {
+try{
     const {
       firstName,
       lastName,
@@ -424,9 +447,19 @@ export const register = async (req, res, next) => {
       password,
       country,
       role,
+      referrerId,
       sellerDetails, 
     } = req.body;
-
+console.log({
+      firstName,
+      lastName,
+      email,
+      password,
+      country,
+      role,
+      referrerId,
+      sellerDetails, 
+    });
     const existingUser = await User.findOne({ email });
 
     // Special handling: If user exists and role is 'seller'
@@ -457,7 +490,7 @@ export const register = async (req, res, next) => {
       folder: "user_resumes",
       resource_type: "raw",
       format: "pdf",
-      public_id: `user_resumes/${Date.now()}-${existingUser.firstName || "resume"}.pdf`,
+      public_id: `user_resumes/${Date.now()}-${firstName || "resume"}.pdf`,
       use_filename: true,
       unique_filename: false,
       overwrite: true,
@@ -543,7 +576,7 @@ const cloudinaryResume = await new Promise((resolve, reject) => {
       folder: "user_resumes",
       resource_type: "raw",
       format: "pdf",
-      public_id: `user_resumes/${Date.now()}-${existingUser.firstName || "resume"}.pdf`,
+      public_id: `user_resumes/${Date.now()}-${firstName || "resume"}.pdf`,
       use_filename: true,
       unique_filename: false,
       overwrite: true,
@@ -574,6 +607,9 @@ const cloudinaryResume = await new Promise((resolve, reject) => {
       profileUrl,
       verified: isSeller ? false : isAdmin || false,
     };
+if (referrerId) {
+  newUserData.referrer = referrerId;
+}
 
    if (isSeller && sellerDetails) {
   newUserData.sellerDetails = {};
@@ -600,6 +636,25 @@ const cloudinaryResume = await new Promise((resolve, reject) => {
       transactions: [],
     });
 
+if (referrerId) {
+  const referrer = await User.findById(referrerId);
+  if (referrer) {
+    await transporter.sendMail({
+      from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+      to: referrer?.email,
+      subject: "🙌 Someone Used Your Referral!",
+      html: generateEmailTemplate({
+        firstName: referrer?.firstName,
+        subject: "Someone Used Your Referral!",
+        content: `
+          <p>Good news! A new user just signed up using your referral link.</p>
+          <p>Once they complete their first order, you'll receive your referral reward automatically in your wallet.</p>
+          <p>Thanks for helping grow the Service Marketplace community!</p>
+        `,
+      }),
+    });
+  }
+}
 
 
 
@@ -652,10 +707,10 @@ const cloudinaryResume = await new Promise((resolve, reject) => {
         ...(isSeller && user.sellerDetails && { sellerDetails: user.sellerDetails }),
       },
     });
-
-  } catch (error) {
+  } catch(error){
     next(error);
   }
+ 
 };
 
 
@@ -882,6 +937,22 @@ export const getMyProfile = async (req, res, next) => {
 
     const wallet = await Wallet.findOne({ userId });
 
+const enrichedReferrals = await Promise.all(
+  (wallet?.referrals || []).map(async (ref) => {
+    const user = await User.findById(ref.referredUser._id).select("firstName lastName country");
+    return {
+      ...ref.toObject(),
+      referredUser: {
+        _id: ref.referredUser._id,
+        firstName: user?.firstName,
+        lastName: user?.lastName,
+        country: user?.country,
+      },
+    };
+  })
+);
+
+
     const orders = await Order.find({
       $or: [{ buyerId: userId }, { sellerId: userId }]
     })
@@ -970,13 +1041,16 @@ export const getMyProfile = async (req, res, next) => {
       $or: [{ participantOne: userId }, { participantTwo: userId }],
     });
 
-    const enrichedWallet = {
-      ...(wallet?.toObject?.() || { balance: 0, transactions: [] }),
-      walletStatus: {
-        workInProgress: sellerWorkInProgress,
-        inReview: sellerInReview,
-      },
-    };
+
+// then replace the referrals
+const enrichedWallet = {
+  ...(wallet?.toObject?.() || {}),
+  referrals: enrichedReferrals,
+  walletStatus: {
+    workInProgress: sellerWorkInProgress,
+    inReview: sellerInReview,
+  },
+};
 
     const rawUser = req.user.toObject?.() || req.user;
 

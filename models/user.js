@@ -91,6 +91,12 @@ sellerDetails: {
     type: Boolean,
     default: false,
   },
+  referrer: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "User",
+  default: null,
+},
+
 wishlist: [
   {
     type: mongoose.Schema.Types.ObjectId,

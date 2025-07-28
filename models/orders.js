@@ -19,7 +19,7 @@ const orderSchema = new mongoose.Schema({
   },
   packageType: {
     type: String,
-    enum: ["basic", "standard", "premium"],
+    enum: ["basic", "standard", "premium", "custom"],
     required: true,
   },
   packageDetails: {
@@ -35,6 +35,12 @@ const orderSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  referrer: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "User",
+  default: null,
+},
+
   files: {
     type: [
       {
@@ -251,6 +257,9 @@ orderSchema.post("save", async function (doc) {
   }
 
   await seller.save();
+
+   
+
 });
 
 

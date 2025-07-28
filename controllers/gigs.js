@@ -271,42 +271,72 @@ export const updateGig = async (req, res, next) => {
       videoIframes,
       offerPackages,
     } = req.body;
+console.log(req.body.imagesToRemove);
+   // Handle image deletions before adding new ones
+if (req.body.imagesToRemove) {
+  const toRemove = JSON.parse(req.body.imagesToRemove); // array of public_ids
 
-    // Handle image uploads
-    if (req.files?.gigImages?.length > 0) {
-      for (const imgUrl of gig.images) {
-        const publicId = extractPublicId(imgUrl);
-        if (publicId) {
-          await cloudinary.uploader.destroy(publicId);
-        }
-      }
+  // Remove images from DB and Cloudinary
+  gig.images = gig.images.filter(img => !toRemove.includes(img.public_id));
 
-      const uploadedImages = [];
-      for (const imageFile of req.files.gigImages) {
-        if (imageFile.buffer) {
-          const newImageUrl = await uploadToCloudinary(imageFile.buffer);
-          uploadedImages.push(newImageUrl);
-        }
-      }
-      gig.images = uploadedImages;
+  for (const pid of toRemove) {
+    await cloudinary.uploader.destroy(pid);
+  }
+}
+
+// Handle new image uploads
+if (req.files?.gigImages?.length > 0) {
+  const currentImages = gig.images || [];
+  const uploadedImages = [];
+
+  for (const imageFile of req.files.gigImages) {
+    if (imageFile.size > 1 * 1024 * 1024) {
+      return next(new ErrorHandler("Each image must be 1MB or smaller", 400));
     }
 
-    // Handle PDF upload
-    if (req.files?.gigPdf?.length > 0) {
-      const pdfFile = req.files.gigPdf[0];
-
-      if (pdfFile.size > 1 * 1024 * 1024) {
-        return next(new ErrorHandler("PDF size exceeds 1MB limit", 400));
-      }
-
-      const oldPdfPublicId = extractPublicId(gig.pdf);
-      if (oldPdfPublicId) {
-        await cloudinary.uploader.destroy(oldPdfPublicId, { resource_type: "raw" });
-      }
-
-      const newPdfUrl = await uploadToCloudinary(pdfFile.buffer, "gig_pdfs", "raw");
-      gig.pdf = newPdfUrl;
+    if (imageFile.buffer) {
+      const newImage = await uploadToCloudinary(imageFile.buffer);
+      uploadedImages.push(newImage);
     }
+  }
+
+  // Append new images, cap to 3
+  gig.images = [...currentImages, ...uploadedImages].slice(0, 3);
+}
+
+// Handle PDF Upload/Replace/Remove
+if (req.files?.gigPdf?.length > 0) {
+  const pdfFile = req.files.gigPdf[0];
+
+  // 1MB size limit
+  if (pdfFile.size > 1 * 1024 * 1024) {
+    return next(new ErrorHandler("PDF size exceeds 1MB limit", 400));
+  }
+
+  // Delete old PDF if exists
+  const oldPdfPublicId = extractPublicId(gig.pdf);
+  if (oldPdfPublicId) {
+    await cloudinary.uploader.destroy(oldPdfPublicId, { resource_type: "raw" });
+  }
+
+  // Upload new PDF
+  const newPdfUrl = await uploadToCloudinary(pdfFile.buffer, "gig_pdfs", "raw");
+  gig.pdf = newPdfUrl;
+
+} else if (req.body.removePdf === "true") {
+  // Remove PDF if user explicitly removed it
+  const oldPdfPublicId = extractPublicId(gig.pdf);
+  if (oldPdfPublicId) {
+    await cloudinary.uploader.destroy(oldPdfPublicId, { resource_type: "raw" });
+  }
+  gig.pdf = {
+    url: "",
+    public_id: "",
+  };
+}
+
+// Else: keep existing PDF as-is (do nothing)
+
 
     // Update fields
     if (gigTitle !== undefined) gig.gigTitle = gigTitle;
@@ -326,8 +356,7 @@ export const updateGig = async (req, res, next) => {
 
     const user = await User.findById(gig.userId);
     const adminEmail = process.env.ADMIN_EMAIL;
-    const backendURL = "https://backend-service-marketplace.vercel.app";
-
+    
     const adminHtml = `
       <h2>🔄 Gig Updated & Pending Review</h2>
       <p><strong>Gig Title:</strong> ${gig.gigTitle}</p>
