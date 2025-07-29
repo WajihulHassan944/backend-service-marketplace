@@ -1,5 +1,16 @@
 import mongoose from "mongoose";
 
+const subcategorySchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+  },
+  subcategories: {
+    type: [String], // You can later replace with nested subcategory objects if deep nesting needed
+    default: [],
+  }
+}, { _id: false });
+
 const categorySchema = new mongoose.Schema({
   name: {
     type: String,
@@ -7,16 +18,16 @@ const categorySchema = new mongoose.Schema({
     unique: true,
   },
   icon: {
-    type: String, // You can use an icon name or URL
+    type: String,
+    required: true,
+  },
+  image: {
+    type: String,
     required: true,
   },
   subcategories: {
-  type: [String],
-  default: [],
-},
-  image: {
-    type: String, // URL of the image (e.g., from Cloudinary)
-    required: true,
+    type: [subcategorySchema],
+    default: [],
   },
 });
 

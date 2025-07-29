@@ -4,7 +4,6 @@ import { Gig } from "../models/gigs.js";
 import { Notification } from "../models/notification.js";
 import cloudinary from "../utils/cloudinary.js";
 import streamifier from "streamifier";
-
 export const createCategory = async (req, res, next) => {
   try {
     const { name, icon, subcategories } = req.body;
@@ -33,17 +32,27 @@ export const createCategory = async (req, res, next) => {
       return next(new ErrorHandler("Category image is required.", 400));
     }
 
+    // Parse subcategories: support both JSON string or actual object array
+    let parsedSubcategories = [];
+    if (Array.isArray(subcategories)) {
+      parsedSubcategories = subcategories;
+    } else if (typeof subcategories === "string") {
+      try {
+        parsedSubcategories = JSON.parse(subcategories);
+      } catch (e) {
+        return next(
+          new ErrorHandler("Invalid subcategories format. Must be valid JSON.", 400)
+        );
+      }
+    }
+
     const newCategory = await Category.create({
       name,
       icon,
       image: imageUrl,
-      subcategories: Array.isArray(subcategories)
-        ? subcategories
-        : typeof subcategories === "string"
-        ? subcategories.split(",").map((s) => s.trim())
-        : [],
+      subcategories: parsedSubcategories,
     });
- 
+
     await Notification.create({
       user: req.user._id,
       title: "New Category Created",
@@ -52,6 +61,7 @@ export const createCategory = async (req, res, next) => {
       targetRole: "superadmin",
       link: "",
     });
+
     res.status(201).json({
       success: true,
       message: "Category created successfully",
@@ -61,7 +71,6 @@ export const createCategory = async (req, res, next) => {
     next(error);
   }
 };
-
 
 export const deleteCategory = async (req, res, next) => {
   try {
@@ -122,7 +131,6 @@ export const getAllCategories = async (req, res, next) => {
 };
 
 
-
 export const updateCategory = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -133,15 +141,15 @@ export const updateCategory = async (req, res, next) => {
       return next(new ErrorHandler("Category not found.", 404));
     }
 
-    // If a new file is uploaded
+    // If a new image file is uploaded
     if (req.file) {
-      // Delete the old image from Cloudinary
+      // Delete old image from Cloudinary
       const publicId = category.image?.split("/").pop().split(".")[0];
       if (publicId) {
         await cloudinary.uploader.destroy(`category_images/${publicId}`);
       }
 
-      // Upload the new image
+      // Upload new image
       const bufferStream = streamifier.createReadStream(req.file.buffer);
       const cloudinaryUpload = await new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
@@ -157,19 +165,27 @@ export const updateCategory = async (req, res, next) => {
       category.image = cloudinaryUpload.secure_url;
     }
 
-    // Update fields if provided
+    // Update other fields
     if (name) category.name = name;
     if (icon) category.icon = icon;
+
     if (subcategories) {
-      category.subcategories = Array.isArray(subcategories)
-        ? subcategories
-        : typeof subcategories === "string"
-        ? subcategories.split(",").map((s) => s.trim())
-        : [];
+      if (Array.isArray(subcategories)) {
+        category.subcategories = subcategories;
+      } else if (typeof subcategories === "string") {
+        try {
+          category.subcategories = JSON.parse(subcategories);
+        } catch (e) {
+          return next(
+            new ErrorHandler("Invalid subcategories format. Must be valid JSON.", 400)
+          );
+        }
+      }
     }
 
     await category.save();
- await Notification.create({
+
+    await Notification.create({
       user: req.user._id,
       title: "Category Updated",
       description: `Category "${category.name}" was updated.`,
