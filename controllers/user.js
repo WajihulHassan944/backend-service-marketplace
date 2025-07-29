@@ -932,7 +932,6 @@ const timeAgo = (date) => {
 };
 
 export const getMyProfile = async (req, res, next) => {
-  try {
     const userId = req.user._id;
 
     const wallet = await Wallet.findOne({ userId });
@@ -1005,36 +1004,35 @@ const enrichedReferrals = await Promise.all(
           buyerCompletedCount++;
         }
       }
+if (isBuyer && order?.buyerReview?.review && order.sellerId) {
+  buyerReviews.push({
+    ...order.buyerReview,
+    timeAgo: timeAgo(order.buyerReview.createdAt),
+    reviewedGigSeller: {
+      _id: order.sellerId._id,
+      firstName: order.sellerId.firstName,
+      lastName: order.sellerId.lastName,
+      email: order.sellerId.email,
+      profileUrl: order.sellerId.profileUrl || null,
+      country: order.sellerId.country || null,
+    },
+  });
+}
 
-      if (isBuyer && order.buyerReview?.review) {
-        buyerReviews.push({
-          ...order.buyerReview,
-          timeAgo: timeAgo(order.buyerReview.createdAt),
-          reviewedGigSeller: {
-            _id: order.sellerId._id,
-            firstName: order.sellerId.firstName,
-            lastName: order.sellerId.lastName,
-            email: order.sellerId.email,
-            profileUrl: order.sellerId.profileUrl || null,
-            country: order.sellerId.country || null,
-          },
-        });
-      }
-
-      if (isSeller && order.sellerReview?.review) {
-        sellerReviews.push({
-          ...order.sellerReview,
-          timeAgo: timeAgo(order.sellerReview.createdAt),
-          reviewedGigBuyer: {
-            _id: order.buyerId._id,
-            firstName: order.buyerId.firstName,
-            lastName: order.buyerId.lastName,
-            email: order.buyerId.email,
-            profileUrl: order.buyerId.profileUrl || null,
-            country: order.buyerId.country || null,
-          },
-        });
-      }
+if (isSeller && order?.sellerReview?.review && order.buyerId) {
+  sellerReviews.push({
+    ...order.sellerReview,
+    timeAgo: timeAgo(order.sellerReview.createdAt),
+    reviewedGigBuyer: {
+      _id: order.buyerId._id,
+      firstName: order.buyerId.firstName,
+      lastName: order.buyerId.lastName,
+      email: order.buyerId.email,
+      profileUrl: order.buyerId.profileUrl || null,
+      country: order.buyerId.country || null,
+    },
+  });
+}
     }
 
     const chatsCount = await Conversation.countDocuments({
@@ -1095,9 +1093,6 @@ const enrichedWallet = {
       sellerReviews,
     });
 
-  } catch (error) {
-    next(error);
-  }
 };
 
 export const toggleWishlist = async (req, res, next) => {
@@ -1600,12 +1595,12 @@ const portfolios = await Portfolio.find({ user: userId }).lean();
         }
       }
 
-      if (isBuyer && order.buyerReview?.review) {
+      if (isBuyer && order && order.buyerReview?.review) {
         buyerReviews.push({
           ...order.buyerReview,
           timeAgo: timeAgo(order.buyerReview.createdAt),
           reviewedGigSeller: {
-            _id: order.sellerId._id,
+            _id: order.sellerId,
             firstName: order.sellerId.firstName,
             lastName: order.sellerId.lastName,
             email: order.sellerId.email,
