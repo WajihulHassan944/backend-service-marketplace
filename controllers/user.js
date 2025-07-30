@@ -1564,7 +1564,8 @@ const portfolios = await Portfolio.find({ user: userId }).lean();
     const orders = await Order.find({
       $or: [{ buyerId: userId }, { sellerId: userId }],
     })
-      .select("buyerId sellerId buyerReview sellerReview totalAmount status")
+     .select("buyerId sellerId buyerReview sellerReview totalAmount status createdAt updatedAt")
+
       .populate("buyerId", "firstName lastName email profileUrl country")
       .populate("sellerId", "firstName lastName email profileUrl country")
       .lean();
@@ -1584,8 +1585,7 @@ const portfolios = await Portfolio.find({ user: userId }).lean();
 let lastDelivery = null; // 👈 Define before the loop
 
     for (const order of orders) {
-      
-      const isBuyer = order.buyerId?._id?.toString() === userId.toString();
+     const isBuyer = order.buyerId?._id?.toString() === userId.toString();
       const isSeller = order.sellerId?._id?.toString() === userId.toString();
 
 
@@ -1601,8 +1601,8 @@ let lastDelivery = null; // 👈 Define before the loop
 
         if (order.status === "completed") {
           sellerCompletedCount++;
+  
           const completedAt = new Date(order.updatedAt || order.createdAt); // fallback
-          console.log("completed at is", completedAt);
   if (!lastDelivery || completedAt > lastDelivery) {
     lastDelivery = completedAt;
   }
