@@ -1581,10 +1581,10 @@ const portfolios = await Portfolio.find({ user: userId }).lean();
     let buyerOrdersCount = 0;
     let buyerCompletedCount = 0;
     let buyerTotalSpent = 0;
+let lastDelivery = null; // 👈 Define before the loop
 
     for (const order of orders) {
-      let lastDelivery = null; // 👈 Define before the loop
-
+      
       const isBuyer = order.buyerId?._id?.toString() === userId.toString();
       const isSeller = order.sellerId?._id?.toString() === userId.toString();
 
@@ -1602,6 +1602,7 @@ const portfolios = await Portfolio.find({ user: userId }).lean();
         if (order.status === "completed") {
           sellerCompletedCount++;
           const completedAt = new Date(order.updatedAt || order.createdAt); // fallback
+          console.log("completed at is", completedAt);
   if (!lastDelivery || completedAt > lastDelivery) {
     lastDelivery = completedAt;
   }
