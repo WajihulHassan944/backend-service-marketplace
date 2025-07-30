@@ -74,6 +74,10 @@ sellerDetails: {
     type: [String],
     default: [],
   },
+   languages: {
+    type: [String],
+    default: [],
+  },
    personalPortfolio: {
     type: String,
     required: false,

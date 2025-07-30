@@ -932,7 +932,8 @@ const timeAgo = (date) => {
 };
 
 export const getMyProfile = async (req, res, next) => {
-    const userId = req.user._id;
+  try{ 
+  const userId = req.user._id;
 
     const wallet = await Wallet.findOne({ userId });
 
@@ -1092,7 +1093,10 @@ const enrichedWallet = {
       buyerReviews,
       sellerReviews,
     });
-
+  }catch(error){
+    next(error);
+    console.log(error);
+  }
 };
 
 export const toggleWishlist = async (req, res, next) => {
@@ -1417,6 +1421,7 @@ export const updateProfile = async (req, res, next) => {
       speciality,
       description,
       skills, // This should come as a JSON string, will parse below
+      languages,
     } = req.body;
 
     if (!userId) {
@@ -1448,6 +1453,16 @@ export const updateProfile = async (req, res, next) => {
         }
       } catch (err) {
         return res.status(400).json({ message: "Invalid format for skills. Must be a JSON array string." });
+      }
+    }
+     if (languages) {
+      try {
+        const parsedLanguages = JSON.parse(languages);
+        if (Array.isArray(parsedLanguages)) {
+          updatedSellerDetails.languages = parsedLanguages;
+        }
+      } catch (err) {
+        return res.status(400).json({ message: "Invalid format for languages. Must be a JSON array string." });
       }
     }
 

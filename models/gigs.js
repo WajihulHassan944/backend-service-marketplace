@@ -20,6 +20,11 @@ const gigSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  
+  subcategorychild: {
+    type: String,
+    required: true,
+  },
   searchTag: {
     type: String,
     required: true,

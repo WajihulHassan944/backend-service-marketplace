@@ -63,6 +63,7 @@ export const createGig = async (req, res, next) => {
       gigTitle,
       category,
       subcategory,
+      subcategorychild,
       searchTag,
       positiveKeywords,
       packages,
@@ -75,7 +76,7 @@ export const createGig = async (req, res, next) => {
     console.log("🔍 req.body:", req.body);
     console.log("📦 req.files:", req.files);
 
-    if (!userId || !gigTitle || !category || !subcategory || !packages) {
+    if (!userId || !gigTitle || !category || !subcategory || !packages || !subcategorychild) {
       return next(new ErrorHandler("Missing required fields", 400));
     }
 
@@ -114,6 +115,7 @@ export const createGig = async (req, res, next) => {
       packages: JSON.parse(packages),
       gigDescription,
       hourlyRate,
+      subcategorychild,
       offerPackages,
       images,
       videoIframes: JSON.parse(videoIframes || "[]"),
@@ -265,6 +267,7 @@ export const updateGig = async (req, res, next) => {
       subcategory,
       searchTag,
       positiveKeywords,
+      subcategorychild,
       packages,
       gigDescription,
       hourlyRate,
@@ -338,8 +341,9 @@ if (req.files?.gigPdf?.length > 0) {
 // Else: keep existing PDF as-is (do nothing)
 
 
-    // Update fields
+    // Update fields   subcategorychild
     if (gigTitle !== undefined) gig.gigTitle = gigTitle;
+    if (subcategorychild !== undefined) gig.subcategorychild = subcategorychild;
     if (offerPackages !== undefined) gig.offerPackages = offerPackages;
     if (category !== undefined) gig.category = category;
     if (subcategory !== undefined) gig.subcategory = subcategory;
