@@ -1059,6 +1059,9 @@ const enrichedWallet = {
       cleanedRoles = cleanedRoles.filter((role) => role !== "seller");
     }
 
+
+    
+
     const userWithAnalytics = {
       ...rawUser,
 
@@ -1580,8 +1583,14 @@ const portfolios = await Portfolio.find({ user: userId }).lean();
     let buyerTotalSpent = 0;
 
     for (const order of orders) {
+      let lastDelivery = null; // 👈 Define before the loop
+
       const isBuyer = order.buyerId?._id?.toString() === userId.toString();
       const isSeller = order.sellerId?._id?.toString() === userId.toString();
+
+
+
+
 
       if (isSeller) {
         sellerTotalValue += order.totalAmount || 0;
@@ -1592,6 +1601,10 @@ const portfolios = await Portfolio.find({ user: userId }).lean();
 
         if (order.status === "completed") {
           sellerCompletedCount++;
+          const completedAt = new Date(order.updatedAt || order.createdAt); // fallback
+  if (!lastDelivery || completedAt > lastDelivery) {
+    lastDelivery = completedAt;
+  }
         }
 
         if (["pending", "in progress"].includes(order.status)) {
@@ -1658,6 +1671,7 @@ const portfolios = await Portfolio.find({ user: userId }).lean();
           notificationsCount: 0,
           workInProgress: sellerWorkInProgress,
           inReview: sellerInReview,
+          lastDelivery,
         },
       },
 
