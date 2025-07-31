@@ -635,7 +635,7 @@ export const getGigById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const gig = await Gig.findById(id).populate('userId');
+    const gig = await Gig.findById(id).populate("userId").lean();
     if (!gig) {
       return res.status(404).json({
         success: false,
@@ -643,13 +643,78 @@ export const getGigById = async (req, res, next) => {
       });
     }
 
-    // Fetch buyer reviews where this gig's user is the seller
+    const sellerId = gig.userId._id.toString();
+
+    // Fetch orders involving the seller
+    const sellerOrders = await Order.find({ sellerId })
+      .select("buyerId sellerId buyerReview sellerReview totalAmount status createdAt updatedAt")
+      .populate("buyerId", "firstName lastName email profileUrl country")
+      .lean();
+
+    // Analytics computation
+    let activeOrdersCount = 0;
+    let sellerTotalValue = 0;
+    let sellerCompletedCount = 0;
+    let sellerWorkInProgress = 0;
+    let sellerInReview = 0;
+    let lastDelivery = null;
+    const sellerReviews = [];
+
+    for (const order of sellerOrders) {
+      sellerTotalValue += order.totalAmount || 0;
+
+      if (["pending", "in progress", "delivered"].includes(order.status)) {
+        activeOrdersCount++;
+      }
+
+      if (order.status === "completed") {
+        sellerCompletedCount++;
+        const completedAt = new Date(order.updatedAt || order.createdAt);
+        if (!lastDelivery || completedAt > lastDelivery) {
+          lastDelivery = completedAt;
+        }
+      }
+
+      if (["pending", "in progress"].includes(order.status)) {
+        sellerWorkInProgress += order.totalAmount || 0;
+      } else if (order.status === "delivered") {
+        sellerInReview += order.totalAmount || 0;
+      }
+
+      if (order.sellerReview?.review) {
+        sellerReviews.push({
+          ...order.sellerReview,
+          timeAgo: timeAgo(order.sellerReview.createdAt),
+          reviewedGigBuyer: {
+            _id: order.buyerId._id,
+            firstName: order.buyerId.firstName,
+            lastName: order.buyerId.lastName,
+            email: order.buyerId.email,
+            profileUrl: order.buyerId.profileUrl || null,
+            country: order.buyerId.country || null,
+          },
+        });
+      }
+    }
+
+    // Analytics object
+    const sellerAnalytics = {
+      activeOrdersCount,
+      totalOrderValue: `$${sellerTotalValue}`,
+      ordersCompletedCount: sellerCompletedCount,
+      notificationsCount: 0,
+      workInProgress: sellerWorkInProgress,
+      inReview: sellerInReview,
+      lastDelivery,
+    };
+
+    // Fetch buyer reviews for this gig
     const buyerReviewOrders = await Order.find({
       sellerId: gig.userId,
-      'buyerReview.review': { $exists: true, $ne: '' }
+      "buyerReview.review": { $exists: true, $ne: "" },
     }).populate("buyerId", "firstName lastName email profileUrl country");
 
-    const buyerReviews = buyerReviewOrders.map(order => ({
+    const buyerReviews = buyerReviewOrders.map((order) => ({
       ...order.buyerReview,
       timeAgo: timeAgo(order.buyerReview.createdAt),
       reviewedByBuyer: {
@@ -659,17 +724,19 @@ export const getGigById = async (req, res, next) => {
         email: order.buyerId.email,
         profileUrl: order.buyerId.profileUrl || null,
         country: order.buyerId.country || null,
-      }
+      },
     }));
 
-    // 🆕 Fetch clients of this seller
-    const clients = await Client.find({ user: gig.userId }).select("name country profileUrl createdAt");
+    // Clients of this seller
+    const clients = await Client.find({ user: sellerId }).select("name country profileUrl createdAt");
 
     res.status(200).json({
       success: true,
       gig,
       buyerReviews,
-      clients, // appended here
+      sellerReviews,
+      sellerAnalytics,
+      clients,
     });
   } catch (error) {
     console.error("❌ Error in getGigById:", error);

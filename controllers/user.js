@@ -1582,15 +1582,11 @@ const portfolios = await Portfolio.find({ user: userId }).lean();
     let buyerOrdersCount = 0;
     let buyerCompletedCount = 0;
     let buyerTotalSpent = 0;
-let lastDelivery = null; // 👈 Define before the loop
+    let lastDelivery = null;
 
     for (const order of orders) {
      const isBuyer = order.buyerId?._id?.toString() === userId.toString();
       const isSeller = order.sellerId?._id?.toString() === userId.toString();
-
-
-
-
 
       if (isSeller) {
         sellerTotalValue += order.totalAmount || 0;
