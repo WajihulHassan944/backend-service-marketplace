@@ -18,6 +18,7 @@ import { formatDistanceToNow } from 'date-fns'; // Make sure date-fns is install
 import { Conversation } from "../models/conversation.js";
 import { Gig } from "../models/gigs.js";
 import { Portfolio } from "../models/portfolio.js";
+import { Client } from "../models/clients.js";
 
 const fetchGoogleProfile = async (accessToken) => {
   const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
@@ -35,7 +36,8 @@ const fetchGoogleProfile = async (accessToken) => {
 
 // For new user signup
 export const googleRegister = async (req, res, next) => {
-  const { token } = req.body;
+ const { token, country } = req.body;
+
 
   try {
     const profile = await fetchGoogleProfile(token);
@@ -53,6 +55,7 @@ export const googleRegister = async (req, res, next) => {
       firstName,
       lastName,
       email,
+      country: country,
       profileUrl: picture,
       verified: true,
       isNotificationsEnabled: true,
@@ -551,8 +554,8 @@ if (role === "seller") {
 }
 
 
-    let profileUrl = "";
-   if (req.files?.profileImage?.[0]) {
+    let profileUrl = "https://res.cloudinary.com/daflot6fo/image/upload/v1754019495/one_bkvt3i.png"; // default fallback
+if (req.files?.profileImage?.[0]) {
   const bufferStream = streamifier.createReadStream(req.files.profileImage[0].buffer);
   const cloudinaryUpload = await new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
@@ -566,6 +569,7 @@ if (role === "seller") {
   });
   profileUrl = cloudinaryUpload.secure_url;
 }
+
 
 let resumeUrl = "";
 if (req.files?.resume?.[0]) {
@@ -1559,6 +1563,7 @@ export const getSellerProfileData = async (req, res, next) => {
     // Fetch gigs by user
     const gigs = await Gig.find({ userId }).lean();
 const portfolios = await Portfolio.find({ user: userId }).lean();
+const clients = await Client.find({ user: userId }).lean();
 
     // Get all relevant orders
     const orders = await Order.find({
@@ -1690,6 +1695,7 @@ const portfolios = await Portfolio.find({ user: userId }).lean();
       portfolios,
       buyerReviews,
       sellerReviews,
+      clients,
     });
   } catch (error) {
     next(error);
