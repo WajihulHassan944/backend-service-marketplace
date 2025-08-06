@@ -1295,3 +1295,118 @@ export const getDisputedOrders = async (req, res, next) => {
 };
 
 
+
+
+
+
+
+
+
+export const requestRevision = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    const { message } = req.body; // optional revision message from buyer
+
+    if (!orderId) {
+      return next(new ErrorHandler("Order ID is required", 400));
+    }
+
+    const order = await Order.findById(orderId)
+      .populate("sellerId")
+      .populate("buyerId")
+      .populate("gigId");
+
+    if (!order) {
+      return next(new ErrorHandler("Order not found", 404));
+    }
+
+    if (order.status !== "delivered") {
+      return next(new ErrorHandler("Revision can only be requested for delivered orders.", 400));
+    }
+
+    // Update order status to 'revision'
+    order.status = "revision";
+
+    order.revisionRequests.push({
+    message: message || "",
+    requestedAt: new Date(),
+});
+
+    await order.save();
+
+    const buyer = order.buyerId;
+    const seller = order.sellerId;
+
+    const orderLink = `https://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`;
+
+    // Notify seller
+    await Notification.create({
+      user: seller._id,
+      title: "Revision Requested",
+      description: `The buyer has requested a revision for "${order.gigId.gigTitle}".`,
+      type: "order",
+      targetRole: "seller",
+      link: orderLink,
+    });
+
+    // Notify buyer
+    await Notification.create({
+      user: buyer._id,
+      title: "Revision Request Sent",
+      description: `You have requested a revision for "${order.gigId.gigTitle}".`,
+      type: "order",
+      targetRole: "buyer",
+      link: orderLink,
+    });
+
+    // Email seller
+    if (seller?.email) {
+      const html = generateEmailTemplate({
+        firstName: seller.firstName,
+        subject: "Revision Requested",
+        content: `
+          <p>Hi ${seller.firstName},</p>
+          <p>The buyer has requested a revision for your delivery on <strong>${order.gigId.gigTitle}</strong>.</p>
+          ${message ? `<p><strong>Message:</strong> ${message}</p>` : ""}
+          <p>Please review the request and update the delivery accordingly.</p>
+        `,
+      });
+
+      await transporter.sendMail({
+        from: `"Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        to: seller.email,
+        subject: "Revision Requested by Buyer",
+        html,
+      });
+    }
+
+    // Email buyer
+    if (buyer?.email) {
+      const html = generateEmailTemplate({
+        firstName: buyer.firstName,
+        subject: "Revision Request Sent",
+        content: `
+          <p>Hi ${buyer.firstName},</p>
+          <p>Your revision request for <strong>${order.gigId.gigTitle}</strong> has been sent to the seller.</p>
+          ${message ? `<p><strong>Your message:</strong> ${message}</p>` : ""}
+        `,
+      });
+
+      await transporter.sendMail({
+        from: `"Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        to: buyer.email,
+        subject: "Revision Request Sent",
+        html,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Revision requested successfully.",
+      order,
+    });
+  } catch (error) {
+    console.error("❌ Error in requestRevision:", error);
+    next(error);
+  }
+};

@@ -18,6 +18,7 @@ import {
   raiseResolutionRequest,
   respondToResolutionRequest,
   getDisputedOrders,
+  requestRevision,
 } from "../controllers/orders.js";
 
 const router = express.Router();
@@ -34,6 +35,8 @@ router.delete("/delete/:id",  deleteOrder);
 router.get("/all", getAllOrders);
 
 router.patch("/deliver/:orderId", orderUpload.single("file"), deliverOrder);
+
+router.post("/revision/:orderId", isAuthenticated, requestRevision);
 
 router.patch("/buyer-review/:orderId", addBuyerReview);
 

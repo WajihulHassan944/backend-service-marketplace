@@ -52,9 +52,16 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["pending", "in progress", "delivered", "completed", "cancelled", "disputed"],
+    enum: ["pending", "in progress", "delivered", "completed", "cancelled", "disputed", "revision"],
     default: "pending",
   },
+  revisionRequests: [
+  {
+    message: { type: String },
+    requestedAt: { type: Date, default: Date.now },
+  }
+],
+
  deliveries: [
   {
     deliveredAt: Date,
