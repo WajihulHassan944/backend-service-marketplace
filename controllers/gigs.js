@@ -70,7 +70,8 @@ export const createGig = async (req, res, next) => {
       gigDescription,
       hourlyRate,
       videoIframes,
-      offerPackages
+      offerPackages,
+      faqs
     } = req.body;
 
     console.log("🔍 req.body:", req.body);
@@ -119,6 +120,7 @@ export const createGig = async (req, res, next) => {
       offerPackages,
       images,
       videoIframes: JSON.parse(videoIframes || "[]"),
+      faqs: JSON.parse(faqs || "[]"),
       pdf,
       status: "pending",
     });
@@ -353,7 +355,7 @@ if (req.files?.gigPdf?.length > 0) {
     if (gigDescription !== undefined) gig.gigDescription = gigDescription;
     if (hourlyRate !== undefined) gig.hourlyRate = hourlyRate;
     if (videoIframes !== undefined) gig.videoIframes = JSON.parse(videoIframes);
-
+    if (req.body.faqs !== undefined) gig.faqs = JSON.parse(req.body.faqs);
     // Set status to pending
     gig.status = "pending";
     await gig.save();

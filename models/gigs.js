@@ -55,6 +55,12 @@ offerPackages: {
   type: Boolean,
   default: true,
 },
+faqs: [
+  {
+    question: { type: String, required: true },
+    answer: { type: String, required: true },
+  }
+],
 
   status: {
     type: String,
