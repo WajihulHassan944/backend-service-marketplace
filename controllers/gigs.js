@@ -340,10 +340,7 @@ if (req.files?.gigPdf?.length > 0) {
   };
 }
 
-// Else: keep existing PDF as-is (do nothing)
 
-
-    // Update fields   subcategorychild
     if (gigTitle !== undefined) gig.gigTitle = gigTitle;
     if (subcategorychild !== undefined) gig.subcategorychild = subcategorychild;
     if (offerPackages !== undefined) gig.offerPackages = offerPackages;
