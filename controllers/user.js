@@ -19,7 +19,7 @@ import { Conversation } from "../models/conversation.js";
 import { Gig } from "../models/gigs.js";
 import { Portfolio } from "../models/portfolio.js";
 import { Client } from "../models/clients.js";
-
+import mongoose from "mongoose";
 const fetchGoogleProfile = async (accessToken) => {
   const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
     headers: {
@@ -1551,64 +1551,56 @@ export const getSellerProfileData = async (req, res, next) => {
   try {
     const { userId } = req.params;
     if (!userId) {
-      return res.status(400).json({ message: "Missing userId in request." });
+      return res.status(400).json({ success: false, message: "Missing userId in request." });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, message: "Invalid userId format." });
     }
 
     const user = await User.findById(userId).lean();
-
     if (!user) {
-      return res.status(404).json({ message: "User not found." });
+      return res.status(404).json({ success: false, message: "User not found." });
     }
 
-    // Fetch gigs by user
+    // Fetch gigs, portfolios, clients
     const gigs = await Gig.find({ userId }).lean();
-const portfolios = await Portfolio.find({ user: userId }).lean();
-const clients = await Client.find({ user: userId }).lean();
+    const portfolios = await Portfolio.find({ user: userId }).lean();
+    const clients = await Client.find({ user: userId }).lean();
 
-    // Get all relevant orders
+    // Fetch orders
     const orders = await Order.find({
       $or: [{ buyerId: userId }, { sellerId: userId }],
     })
-     .select("buyerId sellerId buyerReview sellerReview totalAmount status createdAt updatedAt")
-
+      .select("buyerId sellerId buyerReview sellerReview totalAmount status createdAt updatedAt")
       .populate("buyerId", "firstName lastName email profileUrl country")
       .populate("sellerId", "firstName lastName email profileUrl country")
       .lean();
 
     const buyerReviews = [];
     const sellerReviews = [];
-
     let sellerWorkInProgress = 0;
     let sellerInReview = 0;
     let activeOrdersCount = 0;
     let sellerTotalValue = 0;
     let sellerCompletedCount = 0;
-
     let buyerOrdersCount = 0;
     let buyerCompletedCount = 0;
     let buyerTotalSpent = 0;
     let lastDelivery = null;
 
     for (const order of orders) {
-     const isBuyer = order.buyerId?._id?.toString() === userId.toString();
-      const isSeller = order.sellerId?._id?.toString() === userId.toString();
+      const isBuyer = order.buyerId?._id?.toString() === userId;
+      const isSeller = order.sellerId?._id?.toString() === userId;
 
       if (isSeller) {
         sellerTotalValue += order.totalAmount || 0;
-
-        if (["pending", "in progress", "delivered"].includes(order.status)) {
-          activeOrdersCount++;
-        }
-
+        if (["pending", "in progress", "delivered"].includes(order.status)) activeOrdersCount++;
         if (order.status === "completed") {
           sellerCompletedCount++;
-  
-          const completedAt = new Date(order.updatedAt || order.createdAt); // fallback
-  if (!lastDelivery || completedAt > lastDelivery) {
-    lastDelivery = completedAt;
-  }
+          const completedAt = new Date(order.updatedAt || order.createdAt);
+          if (!lastDelivery || completedAt > lastDelivery) lastDelivery = completedAt;
         }
-
         if (["pending", "in progress"].includes(order.status)) {
           sellerWorkInProgress += order.totalAmount || 0;
         } else if (order.status === "delivered") {
@@ -1619,13 +1611,10 @@ const clients = await Client.find({ user: userId }).lean();
       if (isBuyer) {
         buyerOrdersCount++;
         buyerTotalSpent += order.totalAmount || 0;
-
-        if (order.status === "completed") {
-          buyerCompletedCount++;
-        }
+        if (order.status === "completed") buyerCompletedCount++;
       }
 
-      if (isBuyer && order && order.buyerReview?.review) {
+      if (isBuyer && order.buyerReview?.review) {
         buyerReviews.push({
           ...order.buyerReview,
           timeAgo: timeAgo(order.buyerReview.createdAt),
@@ -1662,7 +1651,6 @@ const clients = await Client.find({ user: userId }).lean();
 
     const userWithAnalytics = {
       ...user,
-
       sellerDetails: {
         ...(user.sellerDetails || {}),
         analytics: {
@@ -1676,7 +1664,6 @@ const clients = await Client.find({ user: userId }).lean();
           lastDelivery,
         },
       },
-
       buyerDetails: {
         analytics: {
           ordersPlacedCount: buyerOrdersCount,
@@ -1698,7 +1685,28 @@ const clients = await Client.find({ user: userId }).lean();
       clients,
     });
   } catch (error) {
-    next(error);
+    console.error("getSellerProfileData error:", error);
+    return res.status(500).json({ success: false, message: "Server error", error: error.message });
+  }
+};
+export const getSellerProfileDataByUserName = async (req, res) => {
+  try {
+    const { userName } = req.params;
+    if (!userName) {
+      return res.status(400).json({ success: false, message: "Missing userName in request." });
+    }
+
+    const user = await User.findOne({ userName }).lean();
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    // Reuse the same analytics & data building logic from getSellerProfileData
+    req.params.userId = user._id.toString();
+    return getSellerProfileData(req, res); // directly reuse existing logic
+  } catch (error) {
+    console.error("getSellerProfileDataByUserName error:", error);
+    return res.status(500).json({ success: false, message: "Server error", error: error.message });
   }
 };
 
@@ -1712,7 +1720,7 @@ export const getAllPublicSellerProfiles = async (req, res, next) => {
         { role: { $in: ["seller"] } }
       ]
     }).select(
-      "_id firstName lastName profileUrl sellerDetails.speciality sellerDetails.level"
+      "_id firstName lastName userName profileUrl sellerDetails.speciality sellerDetails.level"
     );
 
     const sellerProfiles = await Promise.all(
@@ -1742,6 +1750,7 @@ export const getAllPublicSellerProfiles = async (req, res, next) => {
           _id: user._id,
           firstName: user.firstName,
           lastName: user.lastName,
+          userName: user.userName,
           profileUrl: user.profileUrl,
           speciality: user.sellerDetails?.speciality || null,
           level: user.sellerDetails?.level || "New Seller",
