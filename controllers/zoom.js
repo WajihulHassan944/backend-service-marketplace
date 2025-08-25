@@ -4,12 +4,15 @@ import { User } from "../models/user.js";
 import { getZoomAccessToken } from '../utils/zoom.js';
 import { transporter } from '../utils/mailer.js';
 import generateEmailTemplate from "../utils/emailTemplate.js";
+import ErrorHandler from '../middlewares/error.js';
 
 
-export const createZoomMeeting = async (req, res) => {
+export const createZoomMeeting = async (req, res, next) => {
   const { topic, duration, userId, participantId } = req.body;
-console.log("user id is ", userId);
   try {
+        if (!userId || !topic || !duration || !participantId) {
+          return next(new ErrorHandler("All required fields must be provided", 400));
+        }
     const token = await getZoomAccessToken();
 
     const zoomRes = await fetch("https://api.zoom.us/v2/users/me/meetings", {
@@ -99,8 +102,7 @@ console.log("user id is ", userId);
 
 export const deleteZoomMeeting = async (req, res) => {
   const { meetingId } = req.params;
-  const userId = req.body.userId;
-
+  
   try {
     const meeting = await Meeting.findOne({ meeting_id: meetingId });
 

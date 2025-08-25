@@ -7,8 +7,8 @@ import streamifier from "streamifier";
 
 export const createPortfolio = async (req, res, next) => {
   try {
-    const { userId, title, description, previewType, websiteLink } = req.body;
-
+    const { title, description, previewType, websiteLink } = req.body;
+const userId = req.user._id;
     if (!userId || !title || !description || !previewType) {
       return next(new ErrorHandler("All required fields must be provided", 400));
     }

@@ -625,7 +625,6 @@ export const approveFinalDelivery = async (req, res, next) => {
   }
 };
 
-// PATCH /api/orders/:orderId/buyer-review
 export const addBuyerReview = async (req, res, next) => {
   try {
     const { orderId } = req.params;
@@ -1030,7 +1029,6 @@ export const raiseResolutionRequest = async (req, res, next) => {
     const subject = `Resolution Ticket Raised for Order ID ${order._id}`;
     const resolutionInfo = `
       <p><strong>Reason:</strong> ${reason}</p>
-      <p><strong>Message:</strong> ${message}</p>
       <p><strong>Ticket ID:</strong> ${order.resolutionRequest.ticketId}</p>
     `;
 
@@ -1078,12 +1076,12 @@ export const raiseResolutionRequest = async (req, res, next) => {
           <p>Please review and take appropriate action:</p>
           <p style="margin-top: 16px;">
             <a href="https://backend-service-marketplace.vercel.app/api/orders/resolution-response/${order._id}?action=accept&userId=${recipient._id}"
-               style="padding: 10px 20px; background-color: #28a745; color: #fff; text-decoration: none; border-radius: 5px; margin-right: 10px;">
-               Accept Request
+               style="padding: 7px 20px; background-color: #28a745; color: #fff; text-decoration: none; border-radius: 5px; margin-right: 10px; font-size:12px;">
+               Accept
             </a>
             <a href="https://backend-service-marketplace.vercel.app/api/orders/resolution-response/${order._id}?action=reject&userId=${recipient._id}"
-               style="padding: 10px 20px; background-color: #dc3545; color: #fff; text-decoration: none; border-radius: 5px;">
-               Reject Request
+               style="padding: 7px 20px; background-color: #dc3545; color: #fff; text-decoration: none; border-radius: 5px; font-size:12px;">
+               Reject
             </a>
           </p>
           <p>If you do not respond, the support team will manually resolve the case after review.</p>
@@ -1109,7 +1107,7 @@ export const raiseResolutionRequest = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: "Resolution request submitted and both parties notified.",
+      message: "Resolution request submitted.",
       resolution: order.resolutionRequest,
     });
   } catch (error) {
@@ -1119,11 +1117,10 @@ export const raiseResolutionRequest = async (req, res, next) => {
 };
 
 
-
 export const respondToResolutionRequest = async (req, res, next) => {
   try {
     const { orderId } = req.params;
-    const { userId, action } = req.query;
+    const { userId, action, isAdmin } = req.query;
 
     if (!orderId || !userId || !["accept", "reject"].includes(action)) {
       return next(new ErrorHandler("Invalid input", 400));
@@ -1141,10 +1138,10 @@ export const respondToResolutionRequest = async (req, res, next) => {
     const buyer = order.buyerId;
     const seller = order.sellerId;
 
-    const isBuyer = userId === buyer._id.toString();
-    const isSeller = userId === seller._id.toString();
+    const isBuyer = userId === buyer?._id?.toString();
+    const isSeller = userId === seller?._id?.toString();
 
-    if (!isBuyer && !isSeller) {
+    if (!isBuyer && !isSeller && !isAdmin) {
       return next(new ErrorHandler("You are not authorized to respond to this resolution", 403));
     }
 
@@ -1152,8 +1149,9 @@ export const respondToResolutionRequest = async (req, res, next) => {
     order.resolutionRequest.status = action === "accept" ? "resolved" : "rejected";
     order.resolutionRequest.respondedBy = userId;
     order.resolutionRequest.resolvedAt = new Date();
-    order.resolutionRequest.adminResponse =
-      action === "accept"
+    order.resolutionRequest.adminResponse = isAdmin
+      ? `Resolution ${action}ed by doTask team`
+      : action === "accept"
         ? `${isBuyer ? "Buyer" : "Seller"} accepted the resolution request`
         : `${isBuyer ? "Buyer" : "Seller"} rejected the resolution request`;
 
@@ -1162,76 +1160,114 @@ export const respondToResolutionRequest = async (req, res, next) => {
 
     await order.save();
 
-    const subject = `Resolution Request ${action === "accept" ? "Accepted" : "Rejected"}`;
+    const subject = isAdmin
+      ? `Resolution ${action === "accept" ? "Resolved" : "Closed"} by doTask Team`
+      : `Resolution Request ${action === "accept" ? "Accepted" : "Rejected"}`;
+
     const emailContent = `
       <p>Order ID: ${order._id}</p>
       <p><strong>Ticket ID:</strong> ${order.resolutionRequest.ticketId}</p>
-      <p><strong>Resolved By:</strong> ${isBuyer ? "Buyer" : "Seller"}</p>
+      <p><strong>Resolved By:</strong> ${isAdmin ? "doTask Support Team" : isBuyer ? "Buyer" : "Seller"}</p>
       <p><strong>Status:</strong> ${order.resolutionRequest.status}</p>
-      <p><strong>Action Taken:</strong> ${action === "accept" ? "Accepted and order cancelled" : "Rejected"}</p>
+      <p><strong>Action Taken:</strong> ${
+        action === "accept" ? "Accepted and order cancelled" : "Rejected"
+      }</p>
     `;
 
-    // Notify Opposite Party
-    const notifyUser = isBuyer ? seller : buyer;
-    if (notifyUser?.email) {
-      const html = generateEmailTemplate({
-        firstName: notifyUser.firstName,
-        subject,
-        content: `
-          <p>Dear ${notifyUser.firstName},</p>
-          <p>The ${isBuyer ? "buyer" : "seller"} has <strong>${action}</strong> the resolution request for Order ID: <strong>${order._id}</strong>.</p>
-          ${emailContent}
-        `,
+    // Notify both buyer and seller when admin resolves
+    if (isAdmin) {
+      for (const user of [buyer, seller]) {
+        if (user?.email) {
+          const html = generateEmailTemplate({
+            firstName: user.firstName,
+            subject,
+            content: `
+              <p>Dear ${user.firstName},</p>
+              <p>The doTask support team has <strong>${action}</strong> the resolution request for Order ID: <strong>${order._id}</strong>.</p>
+              ${emailContent}
+            `,
+          });
+
+          await transporter.sendMail({
+            from: `"Marketplace Support" <${process.env.ADMIN_EMAIL}>`,
+            to: user.email,
+            subject,
+            html,
+          });
+
+          await Notification.create({
+            user: user._id,
+            title: subject,
+            description: `The doTask team has ${action}ed the resolution request for Order ID ${order._id}.`,
+            type: "resolution",
+            targetRole: user._id.toString() === buyer._id.toString() ? "buyer" : "seller",
+            link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+          });
+        }
+      }
+    } else {
+      // Notify Opposite Party
+      const notifyUser = isBuyer ? seller : buyer;
+      if (notifyUser?.email) {
+        const html = generateEmailTemplate({
+          firstName: notifyUser.firstName,
+          subject,
+          content: `
+            <p>Dear ${notifyUser.firstName},</p>
+            <p>The ${isBuyer ? "buyer" : "seller"} has <strong>${action}</strong> the resolution request for Order ID: <strong>${order._id}</strong>.</p>
+            ${emailContent}
+          `,
+        });
+
+        await transporter.sendMail({
+          from: `"Marketplace Support" <${process.env.ADMIN_EMAIL}>`,
+          to: notifyUser.email,
+          subject,
+          html,
+        });
+      }
+      await Notification.create({
+        user: notifyUser._id,
+        title: `Resolution ${action === "accept" ? "Accepted" : "Rejected"}`,
+        description: `The ${isBuyer ? "buyer" : "seller"} has ${action}ed the resolution request for Order ID ${order._id}.`,
+        type: "resolution",
+        targetRole: isBuyer ? "seller" : "buyer",
+        link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
       });
 
-      await transporter.sendMail({
-        from: `"Marketplace Support" <${process.env.ADMIN_EMAIL}>`,
-        to: notifyUser.email,
-        subject,
-        html,
+      // Confirm to the responder
+      const responder = isBuyer ? buyer : seller;
+      if (responder?.email) {
+        const html = generateEmailTemplate({
+          firstName: responder.firstName,
+          subject: "Resolution Response Submitted",
+          content: `
+            <p>Dear ${responder.firstName},</p>
+            <p>You have successfully <strong>${action}</strong>ed the resolution request for Order ID: <strong>${order._id}</strong>.</p>
+          `,
+        });
+
+        await transporter.sendMail({
+          from: `"Marketplace Support" <${process.env.ADMIN_EMAIL}>`,
+          to: responder.email,
+          subject: "Resolution Request Response Confirmed",
+          html,
+        });
+      }
+      await Notification.create({
+        user: responder._id,
+        title: `You ${action === "accept" ? "Accepted" : "Rejected"} the Resolution`,
+        description: `You ${action}ed the resolution request for Order ID ${order._id}.`,
+        type: "resolution",
+        targetRole: isBuyer ? "buyer" : "seller",
+        link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
       });
     }
-await Notification.create({
-  user: notifyUser._id,
-  title: `Resolution ${action === "accept" ? "Accepted" : "Rejected"}`,
-  description: `The ${isBuyer ? "buyer" : "seller"} has ${action}ed the resolution request for Order ID ${order._id}.`,
-  type: "resolution",
-  targetRole: isBuyer ? "seller" : "buyer",
-  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
-});
-
-    // Confirm to the responder
-    const responder = isBuyer ? buyer : seller;
-    if (responder?.email) {
-      const html = generateEmailTemplate({
-        firstName: responder.firstName,
-        subject: "Resolution Response Submitted",
-        content: `
-          <p>Dear ${responder.firstName},</p>
-          <p>You have successfully <strong>${action}</strong>ed the resolution request for Order ID: <strong>${order._id}</strong>.</p>
-        `,
-      });
-
-      await transporter.sendMail({
-        from: `"Marketplace Support" <${process.env.ADMIN_EMAIL}>`,
-        to: responder.email,
-        subject: "Resolution Request Response Confirmed",
-        html,
-      });
-    }
-await Notification.create({
-  user: responder._id,
-  title: `You ${action === "accept" ? "Accepted" : "Rejected"} the Resolution`,
-  description: `You ${action}ed the resolution request for Order ID ${order._id}.`,
-  type: "resolution",
-  targetRole: isBuyer ? "buyer" : "seller",
-  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
-});
 
     if (req.headers.accept?.includes("text/html")) {
       return res.send(`
         <div style="text-align: center; margin-top: 100px;">
-          <h2>Resolution ${action === "accept" ? "Accepted" : "Rejected"} Successfully</h2>
+          <h2>${subject}</h2>
           <p>This ticket has been marked as <strong>${order.resolutionRequest.status}</strong>.</p>
         </div>
       `);
@@ -1240,7 +1276,9 @@ await Notification.create({
     // API response
     return res.status(200).json({
       success: true,
-      message: `Resolution ${action}ed successfully.`,
+      message: isAdmin
+        ? `Resolution ${action}ed successfully by doTask team.`
+        : `Resolution ${action}ed successfully.`,
       orderStatus: order.status,
       resolution: order.resolutionRequest,
     });
@@ -1266,22 +1304,27 @@ export const getDisputedOrders = async (req, res, next) => {
       .sort({ "resolutionRequest.requestedAt": -1 });
 
     const formatted = disputedOrders.map((order) => {
-      const { resolutionRequest, totalAmount, buyerId, sellerId } = order;
-      const countryOfDisputer =
-        resolutionRequest?.requestedBy?.toString() === buyerId._id.toString()
-          ? buyerId.country
-          : sellerId.country;
+  const { resolutionRequest, totalAmount, buyerId, sellerId } = order;
 
-      return {
-        _id: order._id,
-        status: order.status,
-        totalAmount,
-        resolutionRequest,
-        countryOfDisputer,
-        buyer: buyerId,
-        seller: sellerId,
-      };
-    });
+  const buyerIdStr = buyerId?._id?.toString();
+  const sellerIdStr = sellerId?._id?.toString();
+
+  const countryOfDisputer =
+    resolutionRequest?.requestedBy?.toString() === buyerIdStr
+      ? buyerId?.country || null
+      : sellerId?.country || null;
+
+  return {
+    _id: order._id,
+    status: order.status,
+    totalAmount,
+    resolutionRequest,
+    countryOfDisputer,
+    buyer: buyerId || null,
+    seller: sellerId || null,
+  };
+});
+
 
     res.status(200).json({
       success: true,

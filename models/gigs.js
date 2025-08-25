@@ -27,7 +27,7 @@ const gigSchema = new mongoose.Schema({
   },
   searchTag: {
     type: String,
-    required: true,
+    required: false,
   },
   positiveKeywords: {
     type: [String],

@@ -1,5 +1,5 @@
 import express from "express";
-import { isAuthenticated } from "../middlewares/auth.js";
+import { isAuthenticated, isAuthenticatedSuperAdmin } from "../middlewares/auth.js";
 import gigUpload from "../middlewares/gigUpload.js";
 import {
   changeGigStatus,
@@ -19,6 +19,7 @@ const router = express.Router();
 // Create a new gig
 router.post(
   "/create",
+  isAuthenticated,
   gigUpload.fields([
     { name: "gigImages", maxCount: 3 },
     { name: "gigPdf", maxCount: 1 },
@@ -29,6 +30,7 @@ router.post(
 // Update an existing gig by ID (with file + field handling)
 router.put(
   "/update/:id",
+  isAuthenticated,
   gigUpload.fields([
     { name: "gigImages", maxCount: 3 },
     { name: "gigPdf", maxCount: 1 },
@@ -37,7 +39,7 @@ router.put(
 );
 
 
-router.delete("/delete/:id", deleteGig);
+router.delete("/delete/:id",isAuthenticated, deleteGig);
 
 router.get("/all/:userId", getGigsByUserId);
 

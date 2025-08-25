@@ -24,7 +24,7 @@ export const isAuthenticatedSuperAdmin = async (req, res, next) => {
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: "Login required",
+        message: "Login required by superadmin, invalid operation",
       });
     }
 

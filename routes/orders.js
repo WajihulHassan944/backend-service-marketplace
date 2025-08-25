@@ -29,7 +29,6 @@ router.get("/user/:userId/:role",  getOrdersByUser);
 
 router.get("/order-by-id/:id",  getOrderById);
 
-
 router.delete("/delete/:id",  deleteOrder);
 
 router.get("/all", getAllOrders);

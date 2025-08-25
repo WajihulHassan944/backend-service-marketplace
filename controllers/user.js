@@ -882,6 +882,11 @@ export const verifyUser = async (req, res, next) => {
   try {
     const { id } = req.params;
 
+    // 🔹 Validate ObjectId first
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).send("<h2>Invalid user ID format</h2>");
+    }
+
     const user = await User.findByIdAndUpdate(
       id,
       { verified: true, sellerStatus: true },
@@ -1198,11 +1203,6 @@ export const logout = (req, res) => {
   const secure = nodeEnv === "development" ? false : true;
   const currentToken = req.cookies?.token;
 
-  console.log("=== Logout Debug Info ===");
-  console.log("NODE_ENV:", nodeEnv);
-  console.log("SameSite:", sameSite);
-  console.log("Secure:", secure);
-  console.log("Current token cookie (if any):", currentToken);
 
   res
     .status(200)
@@ -1216,12 +1216,6 @@ export const logout = (req, res) => {
       success: true,
       user: req.user,
       message: "Token cleared on logout",
-      debug: {
-        NODE_ENV: nodeEnv,
-        sameSite,
-        secure,
-        receivedToken: currentToken,
-      },
     });
 };
 
@@ -1269,11 +1263,16 @@ export const allAvailableSellers = async (req, res, next) => {
 export const resetPasswordRequest = async (req, res, next) => {
   try {
     const { email, currentPassword, captchaToken } = req.body;
-
+if(req.user.email != email){
+  return res.status(400).json({status:400, message: "User not authorized." });
+}
+if(!currentPassword || !email || !captchaToken){
+  return res.status(400).json({status:400, message: "Misiing required fields." });
+}
     // Find the user by email
     const user = await User.findOne({ email }).select("+password");
     if (!user) {
-      return res.status(404).json({ message: "No user found with this email." });
+      return res.status(404).json({status:404, message: "User not found." });
     }
 
     // Validate current password
@@ -1518,9 +1517,11 @@ export const updateProfile = async (req, res, next) => {
 
 export const updateAvailabilityStatus = async (req, res, next) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user._id;
     const { availabilityStatus } = req.body;
-
+if(!userId){
+  return res.status(400).json({ message: "User Not Authorized" });
+}
     if (typeof availabilityStatus !== 'boolean') {
       return res.status(400).json({ message: "availabilityStatus must be a boolean" });
     }

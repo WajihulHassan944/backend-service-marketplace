@@ -20,6 +20,19 @@ const clientSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+    workMonth: {
+      type: String, // Example: "January", "Feb", or "01"
+      required: true,
+      trim: true,
+    },
+    workYear: {
+      type: Number, // Example: 2025
+      required: true,
+    },
+    description: {
+      type: String,
+      trim: true,
+    },
 }, { timestamps: true });
 
 export const Client = mongoose.model("Client", clientSchema);

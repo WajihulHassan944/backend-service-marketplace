@@ -5,7 +5,8 @@ import ErrorHandler from "../middlewares/error.js";
 
 export const createClient = async (req, res, next) => {
   try {
-    const { name, country } = req.body;
+    const { name, country, workMonth, workYear, description } = req.body;
+
     const user = req.user._id;
 
     if (!name || !country) {
@@ -31,7 +32,16 @@ export const createClient = async (req, res, next) => {
       return next(new ErrorHandler("Profile image is required", 400));
     }
 
-    const newClient = await Client.create({ user, name, country, profileUrl });
+    const newClient = await Client.create({ 
+  user, 
+  name, 
+  country, 
+  profileUrl, 
+  workMonth, 
+  workYear, 
+  description 
+});
+
     res.status(201).json({ success: true, client: newClient });
 
   } catch (error) {
@@ -63,12 +73,14 @@ export const getClientById = async (req, res, next) => {
 
 export const updateClient = async (req, res, next) => {
   try {
-    const { name, country } = req.body;
+   const { name, country, workMonth, workYear, description } = req.body;
     let updateData = {};
 
     if (name) updateData.name = name;
-    if (country) updateData.country = country;
-
+if (country) updateData.country = country;
+if (workMonth) updateData.workMonth = workMonth;
+if (workYear) updateData.workYear = workYear;
+if (description) updateData.description = description;
   if (req.file) {
   const bufferStream = streamifier.createReadStream(req.file.buffer);
 

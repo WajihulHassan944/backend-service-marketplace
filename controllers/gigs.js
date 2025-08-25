@@ -59,7 +59,7 @@ const uploadToCloudinary = (buffer, folder = "gig_images", resource_type = "imag
 export const createGig = async (req, res, next) => {
   try {
     const {
-      userId,
+      
       gigTitle,
       category,
       subcategory,
@@ -76,7 +76,7 @@ export const createGig = async (req, res, next) => {
 
     console.log("🔍 req.body:", req.body);
     console.log("📦 req.files:", req.files);
-
+const userId = req.user._id;
     if (!userId || !gigTitle || !category || !subcategory || !packages || !subcategorychild) {
       return next(new ErrorHandler("Missing required fields", 400));
     }
@@ -217,11 +217,16 @@ await Notification.create({
 export const deleteGig = async (req, res, next) => {
   try {
     const { id } = req.params;
-
     const gig = await Gig.findById(id);
     if (!gig) return next(new ErrorHandler("Gig not found", 404));
 
-    // Delete associated images from Cloudinary
+ if (
+      req.user._id.toString() !== gig.userId.toString() &&
+      !(req.user.role && req.user.role.includes("superadmin"))
+    ) {
+      return next(new ErrorHandler("Unauthorized", 401));
+    }
+    
     if (Array.isArray(gig.images)) {
       for (const image of gig.images) {
         if (image.public_id) {
@@ -262,6 +267,9 @@ export const updateGig = async (req, res, next) => {
 
     const gig = await Gig.findById(id);
     if (!gig) return next(new ErrorHandler("Gig not found", 404));
+if (req.user._id.toString() !== gig.userId.toString()) {
+  return next(new ErrorHandler("Unauthorized", 401));
+}
 
     const {
       gigTitle,
@@ -727,7 +735,7 @@ export const getGigById = async (req, res, next) => {
     }));
 
     // Clients of this seller
-    const clients = await Client.find({ user: sellerId }).select("name country profileUrl createdAt");
+    const clients = await Client.find({ user: sellerId }).select("name country profileUrl workMonth workYear description createdAt");
 
     res.status(200).json({
       success: true,
