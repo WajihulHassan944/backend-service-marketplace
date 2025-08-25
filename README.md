@@ -5,9 +5,9 @@ It is built with **Node.js**, **Express.js**, and **MongoDB**.
 
 ---
 
-## Project Structure
+### Project Structure
 
-
+```
 doTask-backend/
 │── app.js                 # Main application setup
 │── server.js              # Server entry point
@@ -80,7 +80,7 @@ doTask-backend/
 ├── stripe.js
 ├── verifyRecaptcha.js
 └── zoom.js
-
+```
 
 ---
 
