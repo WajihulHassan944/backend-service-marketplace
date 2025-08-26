@@ -112,51 +112,6 @@ export const postMessage = async (req, res, next) => {
 
 
 
-export const getUserConversations = async (req, res, next) => {
-  try {
-    const { userId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return next(new ErrorHandler("Invalid userId", 400));
-    }
-
-    // Find all conversations where user is either participantOne or participantTwo
-    const conversations = await Conversation.find({
-      $or: [
-        { participantOne: userId },
-        { participantTwo: userId }
-      ],
-    })
-      .sort({ lastUpdated: -1 })
-      .populate("participantOne", "firstName lastName profileUrl role")
-      .populate("participantTwo", "firstName lastName profileUrl role");
-
-    // Attach last message to each conversation
-    const conversationsWithMessages = await Promise.all(
-      conversations.map(async (conversation) => {
-        const lastMessage = await Message.findOne({
-          conversationId: conversation._id,
-        })
-          .sort({ createdAt: -1 })
-          .select("message senderId createdAt isRead");
-
-        return {
-          ...conversation.toObject(),
-          lastMessage,
-        };
-      })
-    );
-
-    res.status(200).json({
-      success: true,
-      data: conversationsWithMessages,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-
 export const getMessagesByConversationId = async (req, res, next) => {
   try {
     const { conversationId } = req.params;
@@ -226,33 +181,11 @@ export const getConversationPartners = async (req, res, next) => {
     next(error);
   }
 };
-export const markMessagesAsRead = async (req, res, next) => {
-  try {
-    const { conversationId, userId } = req.body;
-
-    if (!mongoose.Types.ObjectId.isValid(conversationId) || !mongoose.Types.ObjectId.isValid(userId)) {
-      return next(new ErrorHandler("Invalid IDs", 400));
-    }
-
-    await Message.updateMany(
-      { conversationId, senderId: { $ne: userId }, isRead: false },
-      { $set: { isRead: true } }
-    );
-
-    res.status(200).json({
-      success: true,
-      message: "Messages marked as read",
-    });
-  } catch (error) {
-    next(error);
-  }
-};
 
 export const deleteMessage = async (req, res, next) => {
   try {
     const { messageId, userId } = req.body;
 
-    // Validate inputs
     if (!messageId || !userId) {
       return next(new ErrorHandler("Message ID and User ID are required", 400));
     }
@@ -262,58 +195,40 @@ export const deleteMessage = async (req, res, next) => {
       return next(new ErrorHandler("Message not found", 404));
     }
 
-    // Only sender can delete the message permanently (if that's your rule)
+    // Only sender can delete permanently (adjust rules if needed)
     if (message.senderId.toString() !== userId) {
       return next(new ErrorHandler("Unauthorized", 403));
     }
 
+    const conversation = await Conversation.findById(message.conversationId);
+
+    // Delete the message
     await message.deleteOne();
 
+    // ✅ Update conversation if this was the last message
+    if (conversation && conversation.lastMessage === message.message) {
+      // Find the new latest message in this conversation
+      const latestMessage = await Message.findOne({ conversationId: conversation._id })
+        .sort({ createdAt: -1 });
+
+      if (latestMessage) {
+        conversation.lastMessage = latestMessage.message;
+        conversation.lastUpdated = latestMessage.createdAt;
+      } else {
+        // No messages left in this conversation
+        conversation.lastMessage = "";
+        conversation.lastUpdated = new Date();
+      }
+
+      await conversation.save();
+    }
+
     // Notify clients via Pusher
-    pusher.trigger('marketplace', 'delete-message', { messageId });
+    await pusher.trigger("marketplace", "delete-message", { messageId });
 
     res.status(200).json({
       success: true,
       message: "Message deleted permanently",
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-
-export const getAllConversationsWithMessages = async (req, res, next) => {
-  try {
-    const { userId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return next(new ErrorHandler("Invalid userId", 400));
-    }
-
-    // Step 1: Find all conversations for the user
-    const conversations = await Conversation.find({
-      participants: userId,
-    })
-      .sort({ lastUpdated: -1 })
-      .populate("participants", "firstName lastName profileUrl role");
-
-    // Step 2: For each conversation, get all messages
-    const detailedConversations = await Promise.all(
-      conversations.map(async (conversation) => {
-        const messages = await Message.find({ conversationId: conversation._id })
-          .sort({ createdAt: 1 }) // Oldest to newest
-          .select("message senderId receiverId createdAt isRead");
-
-        return {
-          ...conversation.toObject(),
-          messages,
-        };
-      })
-    );
-
-    res.status(200).json({
-      success: true,
-      data: detailedConversations,
     });
   } catch (error) {
     next(error);
@@ -333,16 +248,32 @@ export const updateMessageContent = async (req, res, next) => {
       return next(new ErrorHandler("Message not found", 404));
     }
 
+    // Update message content
     message.message = newContent;
     await message.save();
 
-    // Optional: Notify clients if needed
-    pusher.trigger("marketplace", "message-updated", { message });
+    // ✅ Update conversation if this is the lastMessage
+    const conversation = await Conversation.findById(message.conversationId);
+    if (conversation) {
+      conversation.lastMessage = newContent;
+      conversation.lastUpdated = new Date();
+      await conversation.save();
+    }
 
+    // Populate for frontend updates
+    const populatedMessage = await Message.findById(message._id)
+      .populate("senderId", "firstName lastName profileUrl")
+      .populate("receiverId", "firstName lastName profileUrl");
+
+    // Notify clients
+    await pusher.trigger("marketplace", "message-updated", {
+      message: populatedMessage,
+    });
 
     res.status(200).json({
       success: true,
       message: "Message updated successfully",
+      data: populatedMessage,
     });
   } catch (error) {
     next(error);
