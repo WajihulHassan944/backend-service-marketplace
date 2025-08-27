@@ -1277,21 +1277,24 @@ export const allAvailableSellers = async (req, res, next) => {
 };
 
 
-
-
 export const resetPasswordRequest = async (req, res, next) => {
   try {
     const { email, currentPassword, captchaToken } = req.body;
-if(req.user.email != email){
-  return res.status(400).json({status:400, message: "User not authorized." });
-}
-if(!currentPassword || !email || !captchaToken){
-  return res.status(400).json({status:400, message: "Misiing required fields." });
-}
-    // Find the user by email
+
+    // Ensure the request is for the logged-in user
+    if (req.user.email !== email) {
+      return res.status(400).json({ status: 400, message: "User not authorized." });
+    }
+
+    // Required fields check
+    if (!currentPassword || !email || !captchaToken) {
+      return res.status(400).json({ status: 400, message: "Missing required fields." });
+    }
+
+    // Find the user
     const user = await User.findOne({ email }).select("+password");
     if (!user) {
-      return res.status(404).json({status:404, message: "User not found." });
+      return res.status(404).json({ status: 404, message: "User not found." });
     }
 
     // Validate current password
@@ -1306,21 +1309,21 @@ if(!currentPassword || !email || !captchaToken){
       return res.status(400).json({ message: "Failed reCAPTCHA verification." });
     }
 
-    // Generate reset token (1-hour expiry)
+    // Generate reset token (1h expiry)
     const resetToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
       expiresIn: "1h",
     });
 
     const resetLink = `http://dotask-service-marketplace.vercel.app/reset-password?token=${resetToken}`;
 
-    // Compose email
+    // Mail options
     const mailOptions = {
       from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
       to: user.email,
       subject: "Password Reset Request",
       html: generateEmailTemplate({
         firstName: user.firstName,
-        subject: "Reset Your Password",
+        subject: "Reset Your Password", // used only inside email body header
         content: `
           <p>Hello ${user.firstName},</p>
           <p>You requested a password reset. Click the button below to continue:</p>
@@ -1334,16 +1337,11 @@ if(!currentPassword || !email || !captchaToken){
       }),
     };
 
-    // Send email and handle errors
-    transporter.sendMail(mailOptions, (err, info) => {
-      if (err) {
-        console.error("❌ Error sending reset email:", err);
-        return res.status(500).json({ message: "Failed to send reset email. Please try again later." });
-      } else {
-        console.log("✅ Reset email sent:", info.response);
-        return res.status(200).json({ message: "Password reset link sent to your email." });
-      }
-    });
+    // Send email
+    const info = await transporter.sendMail(mailOptions);
+    console.log("✅ Reset email sent:", info.response);
+
+    return res.status(200).json({ message: "Password reset link sent to your email." });
 
   } catch (error) {
     console.error("🚨 resetPasswordRequest error:", error);
