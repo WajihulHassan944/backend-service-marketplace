@@ -441,6 +441,18 @@ export const requestSellerRole = async (req, res, next) => {
   }
 };
 
+const validatePassword = (password) => {
+  const errors = [];
+  if (password.length < 8) errors.push("Minimum 8 characters");
+  if (!/[A-Z]/.test(password)) errors.push("At least 1 uppercase letter");
+  if (!/[a-z]/.test(password)) errors.push("At least 1 lowercase letter");
+  if (!/[0-9]/.test(password)) errors.push("At least 1 number");
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) errors.push("At least 1 special character (!@#$%^&*)");
+  return errors;
+};
+
+
+
 export const register = async (req, res, next) => {
 try{
     const {
@@ -453,16 +465,13 @@ try{
       referrerId,
       sellerDetails, 
     } = req.body;
-console.log({
-      firstName,
-      lastName,
-      email,
-      password,
-      country,
-      role,
-      referrerId,
-      sellerDetails, 
-    });
+
+    // Validate password strength
+const passwordErrors = validatePassword(password);
+if (passwordErrors.length > 0) {
+  return next(new ErrorHandler(`Weak password: ${passwordErrors.join(", ")}`, 400));
+}
+
     const existingUser = await User.findOne({ email });
 
     // Special handling: If user exists and role is 'seller'
