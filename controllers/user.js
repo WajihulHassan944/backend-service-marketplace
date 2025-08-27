@@ -1196,13 +1196,17 @@ export const getWishlistGigs = async (req, res, next) => {
     next(err);
   }
 };
-
 export const logout = (req, res) => {
   const nodeEnv = process.env.NODE_ENV;
   const sameSite = nodeEnv === "development" ? "lax" : "none";
   const secure = nodeEnv === "development" ? false : true;
   const currentToken = req.cookies?.token;
 
+  console.log("=== Logout Debug Info ===");
+  console.log("NODE_ENV:", nodeEnv);
+  console.log("SameSite:", sameSite);
+  console.log("Secure:", secure);
+  console.log("Current token cookie (if any):", currentToken);
 
   res
     .status(200)
@@ -1216,6 +1220,12 @@ export const logout = (req, res) => {
       success: true,
       user: req.user,
       message: "Token cleared on logout",
+      debug: {
+        NODE_ENV: nodeEnv,
+        sameSite,
+        secure,
+        receivedToken: currentToken,
+      },
     });
 };
 
