@@ -1,5 +1,5 @@
 import express from "express";
-import { allAvailableSellers, blockUser, deleteUserById, getAllAdmins, getAllBuyers, getAllSellers, getAllUsers, getMyProfile, getAllPublicSellerProfiles, getSellerProfileData, getUserById, getWishlistGigs, googleLogin, googleRegister, login, logout, register, requestSellerRole, resetPasswordConfirm, resetPasswordRequest, sellerRequest, toggleWishlist, unblockUser, updateAvailabilityStatus, updateProfile, verifyEmail, verifyUser, searchUsers, changePasswordDirectly, getSellerProfileDataByUserName } from "../controllers/user.js";
+import { allAvailableSellers, blockUser, deleteUserById, getAllAdmins, getAllBuyers, getAllSellers, getAllUsers, getMyProfile, getAllPublicSellerProfiles, getSellerProfileData, getUserById, getWishlistGigs, googleLogin, googleRegister, login, logout, register, requestSellerRole, resetPasswordConfirm, resetPasswordRequest, sellerRequest, toggleWishlist, unblockUser, updateAvailabilityStatus, updateProfile, verifyEmail, verifyUser, searchUsers, changePasswordDirectly, getSellerProfileDataByUserName, changePasswordRequest } from "../controllers/user.js";
 import { isAuthenticated, isAuthenticatedSuperAdmin } from "../middlewares/auth.js";
 import upload from "../middlewares/upload.js";
 
@@ -29,7 +29,10 @@ router.put("/:id/seller-request", sellerRequest);
 router.get("/getUserById/:userId",isAuthenticated, getUserById);
 router.get("/getSellersForCowork", allAvailableSellers);
 router.get("/getSellerProfileData/:userId", getSellerProfileData);
-router.post("/reset-password-request",isAuthenticated, resetPasswordRequest);
+
+router.put("/change-password",isAuthenticated, changePasswordRequest);
+
+router.post("/reset-password-request", resetPasswordRequest);
 router.post("/reset-password-confirm", resetPasswordConfirm);
 router.put("/update-profile",isAuthenticated, upload.single("profileImg"), updateProfile);
 router.put("/update/availability",isAuthenticated, updateAvailabilityStatus);

@@ -768,16 +768,16 @@ export const verifyEmail = async (req, res, next) => {
     if (!user) return next(new ErrorHandler("Invalid or expired verification link", 400));
 
     if (user.verified) {
-      return res.redirect("http://dotask-service-marketplace.vercel.app/?verified=already");
+      return res.redirect("http://dotask-service-marketplace.vercel.app/email-verification?verified=already");
     }
 
     user.verified = true;
     await user.save();
 
-    res.redirect("http://dotask-service-marketplace.vercel.app/?verified=success");
+    res.redirect("http://dotask-service-marketplace.vercel.app/email-verification?verified=success");
   } catch (error) {
     console.error(error);
-    res.redirect("http://dotask-service-marketplace.vercel.app/?verified=fail");
+    res.redirect("http://dotask-service-marketplace.vercel.app/email-verification?verified=failed");
   }
 };
 
@@ -1279,15 +1279,10 @@ export const allAvailableSellers = async (req, res, next) => {
 
 export const resetPasswordRequest = async (req, res, next) => {
   try {
-    const { email, currentPassword, captchaToken } = req.body;
-
-    // Ensure the request is for the logged-in user
-    if (req.user.email !== email) {
-      return res.status(400).json({ status: 400, message: "User not authorized." });
-    }
+    const { email, captchaToken } = req.body;
 
     // Required fields check
-    if (!currentPassword || !email || !captchaToken) {
+    if (!email || !captchaToken) {
       return res.status(400).json({ status: 400, message: "Missing required fields." });
     }
 
@@ -1295,12 +1290,6 @@ export const resetPasswordRequest = async (req, res, next) => {
     const user = await User.findOne({ email }).select("+password");
     if (!user) {
       return res.status(404).json({ status: 404, message: "User not found." });
-    }
-
-    // Validate current password
-    const isMatch = await bcrypt.compare(currentPassword, user.password || "");
-    if (!isMatch) {
-      return res.status(401).json({ message: "Incorrect current password." });
     }
 
     // reCAPTCHA validation
@@ -1316,28 +1305,29 @@ export const resetPasswordRequest = async (req, res, next) => {
 
     const resetLink = `http://dotask-service-marketplace.vercel.app/reset-password?token=${resetToken}`;
 
-    // Mail options
-    const mailOptions = {
-      from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
-      to: user.email,
-      subject: "Password Reset Request",
-      html: generateEmailTemplate({
-        firstName: user.firstName,
-        subject: "Reset Your Password", // used only inside email body header
-        content: `
-          <p>Hello ${user.firstName},</p>
-          <p>You requested a password reset. Click the button below to continue:</p>
-          <div style="margin:30px 0;text-align:center;">
-            <a href="${resetLink}" style="display:inline-block;padding:12px 25px;background-color:#007bff;color:#fff;text-decoration:none;border-radius:5px;font-size:16px;">
-              Reset Password
-            </a>
-          </div>
-          <p>This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email.</p>
-        `,
-      }),
-    };
+  const mailOptions = {
+  from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`, // keep consistent
+  to: user.email,
+  subject: "Password Reset Request",
+  html: generateEmailTemplate({
+    firstName: user.firstName,
+    subject: "Reset Your Password",
+    content: `
+      <p>Hello ${user.firstName},</p>
+      <p>You requested to reset your password. Please click the button below to set a new password:</p>
+      <div style="margin:30px 0;text-align:center;">
+        <a href="${resetLink}" 
+           style="display:inline-block;padding:12px 25px;background-color:#007bff;color:#fff;text-decoration:none;border-radius:5px;font-size:16px;">
+          Reset Password
+        </a>
+      </div>
+      <p>This link will expire in <strong>1 hour</strong>. If you did not request this, you can safely ignore this email.</p>
+      <p style="margin-top:20px;">Stay secure,<br><strong>Service Marketplace Team</strong></p>
+    `,
+  }),
+};
 
-    // Send email
+// Send email
     const info = await transporter.sendMail(mailOptions);
     console.log("✅ Reset email sent:", info.response);
 
@@ -1402,15 +1392,31 @@ export const changePasswordDirectly = async (req, res, next) => {
   }
 };
 
-
 export const resetPasswordConfirm = async (req, res, next) => {
   try {
-    const { token, newPassword } = req.body;
+    const { token, newPassword, confirmPassword } = req.body;
+
+    // Required field check
+    if (!newPassword || !confirmPassword) {
+      return res.status(400).json({ message: "New password and confirm password are required." });
+    }
+
+    // Passwords must match
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: "Passwords do not match." });
+    }
+
+   // Validate new password strength
+    const errors = validatePassword(newPassword);
+    if (errors.length > 0) {
+      return res.status(400).json({ message: "Weak password.", errors });
+    }
 
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const userId = decoded.userId;
 
+    // Find user
     const user = await User.findById(userId).select("+password");
     if (!user) {
       return res.status(404).json({ message: "User not found or token is invalid." });
@@ -1420,14 +1426,36 @@ export const resetPasswordConfirm = async (req, res, next) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
+    // Update and save
     user.password = hashedPassword;
     await user.save();
 
-    res.status(200).json({ message: "Password has been reset successfully." });
+    // Send confirmation email
+    const mailOptions = {
+      from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
+      to: user.email,
+      subject: "Your Password Has Been Changed",
+      html: generateEmailTemplate({
+        firstName: user.firstName,
+        subject: "Password Changed Successfully",
+        content: `
+          <p>Hello ${user.firstName},</p>
+          <p>This is a confirmation that your account password was successfully updated.</p>
+          <p>If you did not perform this action, please change immediately or contact our support team.</p>
+          <p style="margin-top:20px;">Stay secure,<br><strong>Service Marketplace Team</strong></p>
+        `,
+      }),
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    return res.status(200).json({ message: "Password has been reset successfully." });
+
   } catch (error) {
     if (error.name === "TokenExpiredError") {
       return res.status(400).json({ message: "Reset link has expired." });
     }
+    console.error("🚨 resetPasswordConfirm error:", error);
     next(error);
   }
 };
@@ -1853,5 +1881,83 @@ export const searchUsers = async (req, res) => {
   } catch (error) {
     console.error('Search error:', error);
     res.status(500).json({ success: false, message: 'Server error while searching users.' });
+  }
+};
+
+
+
+export const changePasswordRequest = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+
+    // Ensure user is authenticated
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: "Unauthorized request." });
+    }
+
+    // Required fields check
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({ message: "All fields are required." });
+    }
+
+    // New password and confirm password match check
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: "Passwords do not match." });
+    }
+
+    // Validate new password strength
+    const errors = validatePassword(newPassword);
+    if (errors.length > 0) {
+      return res.status(400).json({ message: "Weak password.", errors });
+    }
+
+    // Find the user
+    const user = await User.findById(req.user._id).select("+password");
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    // Validate current password
+    const isMatch = await bcrypt.compare(currentPassword, user.password || "");
+    if (!isMatch) {
+      return res.status(401).json({ message: "Incorrect current password." });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password
+    user.password = hashedPassword;
+    await user.save();
+
+    // ✅ Optionally: Send confirmation email
+    try {
+      const mailOptions = {
+        from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+        to: user.email,
+        subject: "Your Password Has Been Changed",
+        html: generateEmailTemplate({
+          firstName: user.firstName,
+          subject: "Password Changed Successfully",
+          content: `
+            <p>Hello ${user.firstName},</p>
+            <p>This is a confirmation that your account password was successfully updated.</p>
+            <p>If you did not perform this action, please reset your password immediately or contact support.</p>
+          `,
+        }),
+      };
+
+      await transporter.sendMail(mailOptions);
+      console.log("✅ Password change confirmation email sent to:", user.email);
+    } catch (emailError) {
+      console.error("🚨 Failed to send confirmation email:", emailError);
+      // Don’t block response if email fails
+    }
+
+    return res.status(200).json({ message: "Password updated successfully." });
+
+  } catch (error) {
+    console.error("🚨 changePasswordRequest error:", error);
+    next(error);
   }
 };
