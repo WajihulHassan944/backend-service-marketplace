@@ -1,5 +1,5 @@
 import express from "express";
-import { allAvailableSellers, blockUser, deleteUserById, getAllAdmins, getAllBuyers, getAllSellers, getAllUsers, getMyProfile, getAllPublicSellerProfiles, getSellerProfileData, getUserById, getWishlistGigs, googleLogin, googleRegister, login, logout, register, requestSellerRole, resetPasswordConfirm, resetPasswordRequest, sellerRequest, toggleWishlist, unblockUser, updateAvailabilityStatus, updateProfile, verifyEmail, verifyUser, searchUsers, changePasswordDirectly, getSellerProfileDataByUserName, changePasswordRequest } from "../controllers/user.js";
+import { allAvailableSellers, blockUser, deleteUserById, getAllAdmins, getAllBuyers, getAllSellers, getAllUsers, getMyProfile, getAllPublicSellerProfiles, getSellerProfileData, getUserById, getWishlistGigs, googleLogin, googleRegister, login, logout, register, requestSellerRole, resetPasswordConfirm, resetPasswordRequest, sellerRequest, toggleWishlist, unblockUser, updateAvailabilityStatus, updateProfile, verifyEmail, verifyUser, searchUsers,  getSellerProfileDataByUserName, changePasswordRequest } from "../controllers/user.js";
 import { isAuthenticated, isAuthenticatedSuperAdmin } from "../middlewares/auth.js";
 import upload from "../middlewares/upload.js";
 
@@ -40,7 +40,6 @@ router.post("/toggle-wishlist", isAuthenticated, toggleWishlist);
 router.get("/wishlisted-gigs", isAuthenticated, getWishlistGigs);
 router.get("/seller-homepage-profile", getAllPublicSellerProfiles);
 router.get('/search-users', searchUsers);
-router.post("/change-password", changePasswordDirectly);
 router.get('/getSellerProfileDataByUsername/:userName', getSellerProfileDataByUserName);
 
 export default router;

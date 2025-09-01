@@ -1340,58 +1340,6 @@ export const resetPasswordRequest = async (req, res, next) => {
 };
 
 
-export const changePasswordDirectly = async (req, res, next) => {
-  try {
-    const {userId , currentPassword, newPassword } = req.body;
-
-    // Find user by _id
-    const user = await User.findById(userId).select("+password");
-    if (!user) {
-      return res.status(404).json({ message: "No user found with this ID." });
-    }
-
-    // Compare current password
-    const isMatch = await bcrypt.compare(currentPassword, user.password || "");
-    if (!isMatch) {
-      return res.status(401).json({ message: "Incorrect current password." });
-    }
-
-    // Hash and update new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
-    await user.save();
-
-    // Compose confirmation email
-    const mailOptions = {
-      from: `"Service Marketplace Admin" <${process.env.ADMIN_EMAIL}>`,
-      to: user.email,
-      subject: "Your Password Has Been Changed",
-      html: generateEmailTemplate({
-        firstName: user.firstName,
-        subject: "Password Changed Successfully",
-        content: `
-          <p>Hello ${user.firstName},</p>
-          <p>Your password was successfully changed. If you did not perform this action, please contact support immediately.</p>
-        `,
-      }),
-    };
-
-    // Send confirmation email
-    transporter.sendMail(mailOptions, (err, info) => {
-      if (err) {
-        console.error("❌ Error sending confirmation email:", err);
-        return res.status(500).json({ message: "Password updated, but email failed to send." });
-      } else {
-        console.log("✅ Confirmation email sent:", info.response);
-        return res.status(200).json({ message: "Password updated and confirmation email sent." });
-      }
-    });
-  } catch (error) {
-    console.error("🚨 changePasswordDirectly error:", error);
-    next(error);
-  }
-};
-
 export const resetPasswordConfirm = async (req, res, next) => {
   try {
     const { token, newPassword, confirmPassword } = req.body;
@@ -1421,6 +1369,10 @@ export const resetPasswordConfirm = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({ message: "User not found or token is invalid." });
     }
+    const isSame = await bcrypt.compare(newPassword, user.password || "");
+if (isSame) {
+  return res.status(400).json({ message: "New password cannot be the same as your current password." });
+}
 
     // Hash the new password
     const salt = await bcrypt.genSalt(10);
@@ -1916,6 +1868,11 @@ export const changePasswordRequest = async (req, res, next) => {
     if (!user) {
       return res.status(404).json({ message: "User not found." });
     }
+// Prevent new password from being the same as current
+const isSame = await bcrypt.compare(newPassword, user.password || "");
+if (isSame) {
+  return res.status(400).json({ message: "New password cannot be the same as your current password." });
+}
 
     // Validate current password
     const isMatch = await bcrypt.compare(currentPassword, user.password || "");
