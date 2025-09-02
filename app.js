@@ -31,8 +31,9 @@ app.use(
       "http://localhost:3000",
       "http://localhost:3001",
       "https://do-task-swagger-ui.vercel.app",
-      "https://dotask-service-marketplace.vercel.app", // prod
+      "dotask-service-marketplace-git-dev-wajihulhassan944s-projects.vercel.app", // prod
       "https://dotask-service-marketplace-git-dev-wajihulhassan944s-projects.vercel.app", // dev
+      "http://dotask-service-marketplace-git-dev-wajihulhassan944s-projects.vercel.app"
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], // include OPTIONS
     credentials: true,
