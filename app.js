@@ -27,11 +27,21 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(
   cors({
-    origin: [process.env.FRONTEND_URL, "http://localhost:3000", "http://localhost:3001", "https://do-task-swagger-ui.vercel.app", "https://dotask-service-marketplace-git-dev-wajihulhassan944s-projects.vercel.app"],
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "https://do-task-swagger-ui.vercel.app",
+      "https://dotask-service-marketplace.vercel.app", // prod
+      "https://dotask-service-marketplace-git-dev-wajihulhassan944s-projects.vercel.app", // dev
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], // include OPTIONS
     credentials: true,
   })
 );
+
+// explicitly handle preflight
+app.options("*", cors());
+
 // Using routes
 app.use("/api/users", userRouter);
 app.use("/api/category", categoryRouter);
