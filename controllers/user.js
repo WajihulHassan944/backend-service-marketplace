@@ -464,6 +464,8 @@ try{
       role,
       referrerId,
       sellerDetails, 
+       phoneCountryCode,
+       phoneNumber 
     } = req.body;
 
     // Validate password strength
@@ -524,6 +526,13 @@ if (passwordErrors.length > 0) {
       if (!existingUser.role.includes("seller")) {
         updateData.role = [...existingUser.role, "seller"];
       }
+      if (phoneCountryCode !== undefined || phoneNumber !== undefined) {
+  updateData.phone = {
+    countryCode: phoneCountryCode || existingUser.phone?.countryCode || "",
+    number: phoneNumber || existingUser.phone?.number || "",
+  };
+}
+
 
       await User.updateOne({ email }, { $set: updateData });
 
@@ -620,6 +629,7 @@ const cloudinaryResume = await new Promise((resolve, reject) => {
       profileUrl,
       verified: isSeller ? false : isAdmin || false,
     };
+
 if (referrerId) {
   newUserData.referrer = referrerId;
 }
@@ -633,7 +643,12 @@ if (referrerId) {
   if (resumeUrl) newUserData.sellerDetails.resume = resumeUrl;
 }
 
-
+if (phoneCountryCode !== undefined || phoneNumber !== undefined) {
+  newUserData.phone = {
+    countryCode: phoneCountryCode || "",
+    number: phoneNumber || "",
+  };
+}
     const user = await User.create(newUserData);
 
     const stripeCustomer = await stripe.customers.create({
