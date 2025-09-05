@@ -11,7 +11,6 @@ router.post('/register', upload.fields([
 ]), register);
 
 router.post("/google-login", googleLogin);
-router.get("/cleanup-unverified", cleanupUnverifiedUsers);
 router.post("/google-register", googleRegister);
 router.post("/login", login);
 router.get("/logout", logout);
@@ -30,7 +29,7 @@ router.put("/:id/seller-request", sellerRequest);
 router.get("/getUserById/:userId", getUserById);
 router.get("/getSellersForCowork", allAvailableSellers);
 router.get("/getSellerProfileData/:userId", getSellerProfileData);
-
+router.get("/cleanup-unverified", cleanupUnverifiedUsers);
 router.put("/change-password",isAuthenticated, changePasswordRequest);
 
 router.post("/reset-password-request", resetPasswordRequest);
