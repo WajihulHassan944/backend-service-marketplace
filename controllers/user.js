@@ -1431,6 +1431,8 @@ export const updateProfile = async (req, res, next) => {
       description,
       skills, // This should come as a JSON string, will parse below
       languages,
+      phoneCountryCode,
+       phoneNumber 
     } = req.body;
 
     if (!userId) {
@@ -1475,6 +1477,12 @@ export const updateProfile = async (req, res, next) => {
       }
     }
 
+if (phoneCountryCode !== undefined || phoneNumber !== undefined) {
+  user.phone = {
+    countryCode: phoneCountryCode || user.phone?.countryCode || "",
+    number: phoneNumber || user.phone?.number || "",
+  };
+}
     user.sellerDetails = updatedSellerDetails;
 
     // Handle image upload if file provided
