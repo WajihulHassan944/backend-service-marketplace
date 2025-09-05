@@ -1,5 +1,5 @@
 import express from "express";
-import { allAvailableSellers, blockUser, deleteUserById, getAllAdmins, getAllBuyers, getAllSellers, getAllUsers, getMyProfile, getAllPublicSellerProfiles, getSellerProfileData, getUserById, getWishlistGigs, googleLogin, googleRegister, login, logout, register, requestSellerRole, resetPasswordConfirm, resetPasswordRequest, sellerRequest, toggleWishlist, unblockUser, updateAvailabilityStatus, updateProfile, verifyEmail, verifyUser, searchUsers,  getSellerProfileDataByUserName, changePasswordRequest } from "../controllers/user.js";
+import { allAvailableSellers, blockUser, deleteUserById, getAllAdmins, getAllBuyers, getAllSellers, getAllUsers, getMyProfile, getAllPublicSellerProfiles, getSellerProfileData, getUserById, getWishlistGigs, googleLogin, googleRegister, login, logout, register, requestSellerRole, resetPasswordConfirm, resetPasswordRequest, sellerRequest, toggleWishlist, unblockUser, updateAvailabilityStatus, updateProfile, verifyEmail, verifyUser, searchUsers,  getSellerProfileDataByUserName, changePasswordRequest, cleanupUnverifiedUsers } from "../controllers/user.js";
 import { isAuthenticated, isAuthenticatedSuperAdmin } from "../middlewares/auth.js";
 import upload from "../middlewares/upload.js";
 
@@ -11,6 +11,7 @@ router.post('/register', upload.fields([
 ]), register);
 
 router.post("/google-login", googleLogin);
+router.get("/cleanup-unverified", cleanupUnverifiedUsers);
 router.post("/google-register", googleRegister);
 router.post("/login", login);
 router.get("/logout", logout);

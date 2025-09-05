@@ -107,6 +107,10 @@ wishlist: [
     ref: "Gig",
   },
 ],
+verificationCreatedAt: {
+  type: Date,
+  default: Date.now,
+},
 
   createdAt: {
     type: Date,

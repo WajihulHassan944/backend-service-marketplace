@@ -673,9 +673,10 @@ if (referrerId) {
 
    if (isBuyer && !isSeller) {
   // Send buyer verification email only if not also a seller
-  const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
+  const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1m" });
   const verificationLink = `https://backend-service-marketplace.vercel.app/api/users/verify-email?token=${token}`;
-
+user.verificationCreatedAt = new Date();
+await user.save();
   await transporter.sendMail({
     from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
     to: email,
@@ -758,11 +759,16 @@ export const sellerRequest = async (req, res, next) => {
     res.status(500).json({ success: false, message: "Failed to approve seller" });
   }
 };
-
 export const verifyEmail = async (req, res, next) => {
   try {
     const { token } = req.query;
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    let decoded;
+
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET); // will throw if >5 min
+    } catch (err) {
+      return res.redirect("http://dotask-service-marketplace.vercel.app/email-verification?verified=expired");
+    }
 
     const user = await User.findById(decoded.userId);
     if (!user) return next(new ErrorHandler("Invalid or expired verification link", 400));
@@ -1915,6 +1921,21 @@ if (isSame) {
 
   } catch (error) {
     console.error("🚨 changePasswordRequest error:", error);
+    next(error);
+  }
+};
+
+
+export const cleanupUnverifiedUsers = async (req, res, next) => {
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
+    const result = await User.deleteMany({ verified: false, createdAt: { $lt: cutoff } });
+
+    res.status(200).json({
+      success: true,
+      deleted: result.deletedCount,
+    });
+  } catch (error) {
     next(error);
   }
 };
