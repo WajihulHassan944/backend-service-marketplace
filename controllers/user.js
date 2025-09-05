@@ -673,7 +673,7 @@ if (referrerId) {
 
    if (isBuyer && !isSeller) {
   // Send buyer verification email only if not also a seller
-  const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
+  const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1m" });
   const verificationLink = `https://backend-service-marketplace.vercel.app/api/users/verify-email?token=${token}`;
 user.verificationCreatedAt = new Date();
 await user.save();
