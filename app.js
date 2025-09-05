@@ -34,7 +34,7 @@ app.use(
       "dotask-service-marketplace-git-dev-wajihulhassan944s-projects.vercel.app", // prod
       "https://dotask-service-marketplace-git-dev-wajihulhassan944s-projects.vercel.app", // dev
       "http://dotask-service-marketplace-git-dev-wajihulhassan944s-projects.vercel.app",
-      "https://dotask-service-marketplace.vercel.app/"
+      "https://dotask-service-marketplace.vercel.app"
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"], // include OPTIONS
     credentials: true,
