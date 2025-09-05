@@ -673,7 +673,7 @@ if (referrerId) {
 
    if (isBuyer && !isSeller) {
   // Send buyer verification email only if not also a seller
-  const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1m" });
+  const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "1d" });
   const verificationLink = `https://backend-service-marketplace.vercel.app/api/users/verify-email?token=${token}`;
 user.verificationCreatedAt = new Date();
 await user.save();
@@ -1929,7 +1929,7 @@ if (isSame) {
 export const cleanupUnverifiedUsers = async (req, res, next) => {
   try {
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
-    const result = await User.deleteMany({ verified: false });
+    const result = await User.deleteMany({ verified: false, createdAt: { $lt: cutoff } });
 
     res.status(200).json({
       success: true,

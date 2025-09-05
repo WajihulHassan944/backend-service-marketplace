@@ -8,7 +8,7 @@
   "crons": [
     {
       "path": "/api/users/cleanup-unverified",
-      "schedule": "*/1 * * * *"
+      "schedule": "*/10 * * * *"
     }
   ]
 }
