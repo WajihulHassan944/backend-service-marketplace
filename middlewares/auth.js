@@ -4,16 +4,49 @@ import jwt from "jsonwebtoken";
 export const isAuthenticated = async (req, res, next) => {
   const { token } = req.cookies;
 
-  if (!token)
-    return res.status(404).json({
+  if (!token) {
+    return res.status(401).json({
       success: false,
       message: "Login First",
     });
+  }
 
-  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  try {
+    // verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-  req.user = await User.findById(decoded._id);
-  next();
+    // attach user to req
+    req.user = await User.findById(decoded._id);
+
+    // 🔄 refresh token to extend session (only if still valid)
+    const newToken = jwt.sign(
+      { _id: decoded._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "30m" } // reset 30 min
+    );
+
+    res.cookie("token", newToken, {
+      httpOnly: true,
+      maxAge: 30 * 60 * 1000, // 30 minutes
+      sameSite: process.env.NODE_ENV === "Development" ? "lax" : "none",
+      secure: process.env.NODE_ENV === "Development" ? false : true,
+    });
+
+    next();
+  } catch (err) {
+    // ❌ token expired or invalid → clear cookie
+    res.clearCookie("token", {
+      httpOnly: true,
+      sameSite: process.env.NODE_ENV === "Development" ? "lax" : "none",
+      secure: process.env.NODE_ENV === "Development" ? false : true,
+    });
+
+    return res.status(440).json({
+      success: false,
+      code: "TOKEN_EXPIRED",
+      message: "Session expired. Please log in again.",
+    });
+  }
 };
 
 
