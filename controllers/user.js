@@ -1929,7 +1929,7 @@ if (isSame) {
 export const cleanupUnverifiedUsers = async (req, res, next) => {
   try {
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
-    const result = await User.deleteMany({ verified: false, createdAt: { $lt: cutoff } });
+    const result = await User.deleteMany({ verified: false });
 
     res.status(200).json({
       success: true,
