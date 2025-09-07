@@ -111,6 +111,22 @@ verificationCreatedAt: {
   type: Date,
   default: Date.now,
 },
+phone: {
+  countryCode: {
+    type: String,
+    default: "",
+  },
+  number: {
+    type: String,
+    default: "",
+    validate: {
+      validator: function (v) {
+        return !v || /^[0-9]+$/.test(v); // allow empty OR only digits
+      },
+      message: props => `${props.value} is not a valid phone number!`
+    }
+  }
+},
 
   createdAt: {
     type: Date,

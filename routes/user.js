@@ -31,7 +31,6 @@ router.get("/getSellersForCowork", allAvailableSellers);
 router.get("/getSellerProfileData/:userId", getSellerProfileData);
 router.get("/cleanup-unverified", cleanupUnverifiedUsers);
 router.put("/change-password",isAuthenticated, changePasswordRequest);
-
 router.post("/reset-password-request", resetPasswordRequest);
 router.post("/reset-password-confirm", resetPasswordConfirm);
 router.put("/update-profile",isAuthenticated, upload.single("profileImg"), updateProfile);
