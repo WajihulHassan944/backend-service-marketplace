@@ -49,19 +49,20 @@ export const isAuthenticated = async (req, res, next) => {
   }
 };
 
-
 export const isAuthenticatedSuperAdmin = async (req, res, next) => {
+  const { token } = req.cookies;
+
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      message: "Login required by superadmin, invalid operation",
+    });
+  }
+
   try {
-    const { token } = req.cookies;
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: "Login required by superadmin, invalid operation",
-      });
-    }
-
+    // ✅ Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
     const user = await User.findById(decoded._id);
 
     if (!user || !user.role.includes("superadmin")) {
@@ -71,12 +72,36 @@ export const isAuthenticatedSuperAdmin = async (req, res, next) => {
       });
     }
 
+    // ✅ Attach user
     req.user = user;
+
+    // 🔄 Refresh token to extend session (same as isAuthenticated)
+    const newToken = jwt.sign(
+      { _id: decoded._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "30m" }
+    );
+
+    res.cookie("token", newToken, {
+      httpOnly: true,
+      maxAge: 30 * 60 * 1000, // 30 minutes
+      sameSite: process.env.NODE_ENV === "Development" ? "lax" : "none",
+      secure: process.env.NODE_ENV === "Development" ? false : true,
+    });
+
     next();
-  } catch (error) {
-    return res.status(401).json({
+  } catch (err) {
+    // ❌ Token expired or invalid → clear cookie
+    res.clearCookie("token", {
+      httpOnly: true,
+      sameSite: process.env.NODE_ENV === "Development" ? "lax" : "none",
+      secure: process.env.NODE_ENV === "Development" ? false : true,
+    });
+
+    return res.status(440).json({
       success: false,
-      message: "Invalid or expired token",
+      code: "TOKEN_EXPIRED",
+      message: "Session expired. Please log in again as superadmin.",
     });
   }
 };
