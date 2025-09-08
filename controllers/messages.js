@@ -279,3 +279,38 @@ export const updateMessageContent = async (req, res, next) => {
     next(error);
   }
 };
+
+
+export const deleteMessagesByConversationId = async (req, res, next) => {
+   try {
+    const { conversationId } = req.params;
+
+    if (!conversationId) {
+      return next(new ErrorHandler("conversationId is required", 400));
+    }
+
+    // Check if conversation exists
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return next(new ErrorHandler("Conversation not found", 404));
+    }
+
+    // Delete all messages of this conversation
+    await Message.deleteMany({ conversationId });
+
+    // Delete the conversation itself
+    await Conversation.findByIdAndDelete(conversationId);
+
+    // Notify clients (optional via Pusher / Socket.io)
+    await pusher.trigger("marketplace", "conversation-deleted", {
+      conversationId,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Conversation and all messages deleted successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
