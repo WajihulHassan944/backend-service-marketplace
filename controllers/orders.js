@@ -1367,7 +1367,15 @@ export const requestRevision = async (req, res, next) => {
       return next(new ErrorHandler("Revision can only be requested for delivered orders.", 400));
     }
 
-    // Update order status to 'revision'
+     if (order.revisionRequests.length >= order.packageDetails.revisions) {
+      return next(
+        new ErrorHandler(
+          "You have reached the maximum number of revisions for this package.",
+          400
+        )
+      );
+    }
+
     order.status = "revision";
 
     order.revisionRequests.push({
