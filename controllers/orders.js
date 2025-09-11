@@ -72,6 +72,11 @@ console.log(referrerId);
     if (gig.userId.toString() !== sellerId) {
       return next(new ErrorHandler("Seller ID does not match the gig's owner", 403));
     }
+ if (buyerId === sellerId) {
+      return next(
+        new ErrorHandler("You cannot purchase your own service.", 400)
+      );
+    }
 
  let selectedPackage;
 
