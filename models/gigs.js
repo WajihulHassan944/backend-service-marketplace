@@ -10,20 +10,19 @@ const gigSchema = new mongoose.Schema({
   // Gig Overview
   gigTitle: {
     type: String,
-    required: true,
   },
   category: {
     type: String,
-    required: true,
+   
   },
   subcategory: {
     type: String,
-    required: true,
+   
   },
   
   subcategorychild: {
     type: String,
-    required: true,
+  
   },
   searchTag: {
     type: String,
@@ -64,14 +63,14 @@ faqs: [
 
   status: {
     type: String,
-    enum: ["pending", "active", "rejected"],
+    enum: ["pending", "active", "rejected", "draft","pause"],
     default: "pending",
   },
 
   // Description
   gigDescription: {
     type: String,
-    required: true,
+  
   },
   hourlyRate: {
     type: Number,

@@ -11,6 +11,8 @@ import {
   getAllRejectedGigs,
   getGigById,
   getGigsByUserId,
+  pauseGig,
+  unpauseGig,
   updateGig,
 } from "../controllers/gigs.js";
 
@@ -38,6 +40,8 @@ router.put(
   updateGig
 );
 
+router.put("/pause/:id", isAuthenticated, pauseGig);
+router.put("/unpause/:id", isAuthenticated, unpauseGig);
 
 router.delete("/delete/:id",isAuthenticated, deleteGig);
 

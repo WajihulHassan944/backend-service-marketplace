@@ -6,11 +6,8 @@ import cloudinary from "../utils/cloudinary.js";
 import { User } from "../models/user.js"; // Make sure this is already at the top
 import { Order } from "../models/orders.js";
 import { formatDistanceToNow } from 'date-fns'; // Make sure date-fns is installed
-import fetch from "node-fetch";
-import jwt from "jsonwebtoken";
 import { transporter } from "../utils/mailer.js";
 import generateEmailTemplate from "../utils/emailTemplate.js";
-import nodemailer from "nodemailer";
 import { Notification } from "../models/notification.js";
 import { Client } from "../models/clients.js";
 
@@ -74,12 +71,27 @@ export const createGig = async (req, res, next) => {
       faqs
     } = req.body;
 
-    console.log("🔍 req.body:", req.body);
-    console.log("📦 req.files:", req.files);
 const userId = req.user._id;
-    if (!userId || !gigTitle || !category || !subcategory || !packages || !subcategorychild) {
-      return next(new ErrorHandler("Missing required fields", 400));
-    }
+
+ if (req.body.isDraft !== "true") {
+    if (!userId || !gigTitle || !category || !subcategory || !subcategorychild || !gigDescription || !packages) {
+  const missingFields = [];
+  if (!userId) missingFields.push("userId");
+  if (!gigTitle) missingFields.push("gigTitle");
+  if (!category) missingFields.push("category");
+  if (!subcategory) missingFields.push("subcategory");
+  if (!subcategorychild) missingFields.push("subcategorychild");
+  if (!gigDescription) missingFields.push("gigDescription");
+  if (!packages) missingFields.push("packages");
+
+  return next(
+    new ErrorHandler(
+      `Missing required fields: ${missingFields.join(", ")}`,
+      400
+    )
+  );
+}
+ }
 
     const images = [];
     let pdf = { url: "", public_id: "" };
@@ -122,32 +134,54 @@ const userId = req.user._id;
       videoIframes: JSON.parse(videoIframes || "[]"),
       faqs: JSON.parse(faqs || "[]"),
       pdf,
-      status: "pending",
+      status: req.body.isDraft === "true" ? "draft" : "pending",
     });
 
     // ✅ Fetch user from DB using userId
     const user = await User.findById(userId);
 
-    // ✅ Notify user their gig is under review
-    if (user?.email) {
-      const userHtml = generateEmailTemplate({
-        firstName: user.firstName,
-        subject: "Gig Submitted for Review",
-        content: `
-          <h2>Thank you for submitting your gig, ${user.firstName}!</h2>
-          <p>Your gig titled <strong>${gigTitle}</strong> has been successfully submitted and is currently under admin review.</p>
-          <p>We’ll notify you once it’s approved or rejected.</p>
-        `,
-      });
+// ✅ Notify user based on draft or publish
+if (user?.email) {
+  if (req.body.isDraft === "true") {
+    // Draft confirmation email
+    const draftHtml = generateEmailTemplate({
+      firstName: user.firstName,
+      subject: "Gig Saved as Draft",
+      content: `
+        <h2>Your gig is saved as draft, ${user.firstName}!</h2>
+        <p>Your gig titled <strong>${gigTitle}</strong> has been saved as a draft.</p>
+        <p>You can continue editing and publish it whenever you’re ready.</p>
+      `,
+    });
 
-      await transporter.sendMail({
-        from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
-        to: user.email,
-        subject: "Your Gig is Under Review",
-        html: userHtml,
-      });
-    }
+    await transporter.sendMail({
+      from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+      to: user.email,
+      subject: "Your Gig is Saved as Draft",
+      html: draftHtml,
+    });
+  } else {
+    // Under review email
+    const userHtml = generateEmailTemplate({
+      firstName: user.firstName,
+      subject: "Gig Submitted for Review",
+      content: `
+        <h2>Thank you for submitting your gig, ${user.firstName}!</h2>
+        <p>Your gig titled <strong>${gigTitle}</strong> has been successfully submitted and is currently under admin review.</p>
+        <p>We’ll notify you once it’s approved or rejected.</p>
+      `,
+    });
 
+    await transporter.sendMail({
+      from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+      to: user.email,
+      subject: "Your Gig is Under Review",
+      html: userHtml,
+    });
+  }
+}
+
+      if (req.body.isDraft !== "true") {
     // ✅ Send gig details to Admin with approve/reject buttons
     const adminHtml = generateEmailTemplate({
       firstName: "Admin",
@@ -182,16 +216,18 @@ const userId = req.user._id;
       subject: "New Gig Pending Approval",
       html: adminHtml,
     });
-
-await Notification.create({
-  user: userId,
-  title: "Gig Submitted",
-  description: `Your gig titled "${gigTitle}" was submitted and is under review.`,
-  type: "gig",
-  targetRole: "seller",
-  link: "http://dotask-service-marketplace.vercel.app/seller/services",
-});
-
+   }
+ await Notification.create({
+      user: userId,
+      title: req.body.isDraft === "true" ? "Gig Saved as Draft" : "Gig Submitted",
+      description:
+        req.body.isDraft === "true"
+          ? `Your gig titled "${gigTitle}" was saved as draft.`
+          : `Your gig titled "${gigTitle}" was submitted and is under review.`,
+      type: "gig",
+      targetRole: "seller",
+      link: "http://dotask-service-marketplace.vercel.app/seller/services",
+    });
 
     res.status(201).json({
       success: true,
@@ -271,6 +307,36 @@ if (req.user._id.toString() !== gig.userId.toString()) {
   return next(new ErrorHandler("Unauthorized", 401));
 }
 
+    // ✅ Validate required fields if not a draft
+    if (req.body.isDraft !== "true") {
+      const {
+        gigTitle,
+        category,
+        subcategory,
+        subcategorychild,
+        packages,
+        gigDescription,
+      } = req.body;
+
+      const missingFields = [];
+      if (!gigTitle) missingFields.push("gigTitle");
+      if (!category) missingFields.push("category");
+      if (!subcategory) missingFields.push("subcategory");
+      if (!subcategorychild) missingFields.push("subcategorychild");
+      if (!packages) missingFields.push("packages");
+      if (!gigDescription) missingFields.push("gigDescription");
+
+      if (missingFields.length > 0) {
+        return next(
+          new ErrorHandler(
+            `Missing required fields: ${missingFields.join(", ")}`,
+            400
+          )
+        );
+      }
+    }
+
+
     const {
       gigTitle,
       category,
@@ -284,12 +350,10 @@ if (req.user._id.toString() !== gig.userId.toString()) {
       videoIframes,
       offerPackages,
     } = req.body;
-console.log(req.body.imagesToRemove);
-   // Handle image deletions before adding new ones
+    
+    
 if (req.body.imagesToRemove) {
-  const toRemove = JSON.parse(req.body.imagesToRemove); // array of public_ids
-
-  // Remove images from DB and Cloudinary
+  const toRemove = JSON.parse(req.body.imagesToRemove); 
   gig.images = gig.images.filter(img => !toRemove.includes(img.public_id));
 
   for (const pid of toRemove) {
@@ -362,12 +426,13 @@ if (req.files?.gigPdf?.length > 0) {
     if (videoIframes !== undefined) gig.videoIframes = JSON.parse(videoIframes);
     if (req.body.faqs !== undefined) gig.faqs = JSON.parse(req.body.faqs);
     // Set status to pending
-    gig.status = "pending";
+    gig.status = req.body.isDraft === "true" ? "draft" : "pending";
     await gig.save();
+
 
     const user = await User.findById(gig.userId);
     const adminEmail = process.env.ADMIN_EMAIL;
-    
+      if (req.body.isDraft !== "true") {
     const adminHtml = `
       <h2>🔄 Gig Updated & Pending Review</h2>
       <p><strong>Gig Title:</strong> ${gig.gigTitle}</p>
@@ -398,41 +463,59 @@ if (req.files?.gigPdf?.length > 0) {
         content: adminHtml,
       }),
     });
-
-    // Notify the user
-    if (user?.email) {
-      const userHtml = `
-        <p>Hi ${user.firstName},</p>
-        <p>Your gig "<strong>${gig.gigTitle}</strong>" has been updated and is now pending approval.</p>
-        <p>You’ll receive another email once it’s approved or rejected by the admin.</p>
-      `;
+}
+ if (user?.email) {
+      const userHtml =
+        req.body.isDraft === "true"
+          ? `
+            <p>Hi ${user.firstName},</p>
+            <p>Your gig "<strong>${gig.gigTitle}</strong>" has been saved as draft successfully.</p>
+          `
+          : `
+            <p>Hi ${user.firstName},</p>
+            <p>Your gig "<strong>${gig.gigTitle}</strong>" has been updated and is now pending approval.</p>
+            <p>You’ll receive another email once it’s approved or rejected by the admin.</p>
+          `;
 
       await transporter.sendMail({
         from: `"Gig Platform" <${adminEmail}>`,
         to: user.email,
-        subject: "🕒 Your gig is pending approval",
+        subject:
+          req.body.isDraft === "true"
+            ? "💾 Your gig was saved as draft"
+            : "🕒 Your gig is pending approval",
         html: generateEmailTemplate({
           firstName: user.firstName,
-          subject: "Your gig update is under review",
+          subject:
+            req.body.isDraft === "true"
+              ? "Gig Saved as Draft"
+              : "Your gig update is under review",
           content: userHtml,
         }),
       });
     }
-await Notification.create({
-  user: gig.userId,
-  title: "Gig Updated",
-  description: `Your gig titled "${gig.gigTitle}" was updated and is pending approval.`,
-  type: "gig",
-  targetRole: "seller",
-  link: "http://dotask-service-marketplace.vercel.app/seller/services",
-});
+
+    await Notification.create({
+      user: gig.userId,
+      title: req.body.isDraft === "true" ? "Gig Saved as Draft" : "Gig Updated",
+      description:
+        req.body.isDraft === "true"
+          ? `Your gig titled "${gig.gigTitle}" was saved as draft.`
+          : `Your gig titled "${gig.gigTitle}" was updated and is pending approval.`,
+      type: "gig",
+      targetRole: "seller",
+      link: "http://dotask-service-marketplace.vercel.app/seller/services",
+    });
 
     res.status(200).json({
       success: true,
-      message: "Gig updated successfully. Now pending approval.",
+      message:
+        req.body.isDraft === "true"
+          ? "Gig saved as draft successfully."
+          : "Gig updated successfully. Now pending approval.",
       gig,
-    });
-  } catch (error) {
+    }); 
+} catch (error) {
     console.error("❌ Error in updateGig:", error);
     next(error);
   }
@@ -747,6 +830,133 @@ export const getGigById = async (req, res, next) => {
     });
   } catch (error) {
     console.error("❌ Error in getGigById:", error);
+    next(error);
+  }
+};
+
+
+
+export const pauseGig = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const gig = await Gig.findById(id);
+    if (!gig) return next(new ErrorHandler("Gig not found", 404));
+
+    // Ensure user owns the gig
+    if (req.user._id.toString() !== gig.userId.toString()) {
+      return next(new ErrorHandler("Unauthorized", 401));
+    }
+
+    // Only active gigs can be paused
+    if (gig.status !== "active") {
+      return next(new ErrorHandler("Only active gigs can be paused", 400));
+    }
+
+    gig.status = "pause";
+    await gig.save();
+
+    await Notification.create({
+      user: gig.userId,
+      title: "Gig Paused",
+      description: `Your gig titled "${gig.gigTitle}" has been paused successfully.`,
+      type: "gig",
+      targetRole: "seller",
+      link: "http://dotask-service-marketplace.vercel.app/seller/services",
+    });
+
+    const user = await User.findById(gig.userId);
+    const adminEmail = process.env.ADMIN_EMAIL;
+
+    if (user?.email) {
+      const userHtml = `
+        <p>Hi ${user.firstName},</p>
+        <p>Your gig "<strong>${gig.gigTitle}</strong>" has been paused successfully.</p>
+        <p>You can unpause it anytime from your seller dashboard.</p>
+      `;
+
+      await transporter.sendMail({
+        from: `"Gig Platform" <${adminEmail}>`,
+        to: user.email,
+        subject: "⏸️ Your gig has been paused",
+        html: generateEmailTemplate({
+          firstName: user.firstName,
+          subject: "Gig Paused",
+          content: userHtml,
+        }),
+      });
+    }
+
+
+    res.status(200).json({
+      success: true,
+      message: "Gig has been paused successfully.",
+      gig,
+    });
+  } catch (error) {
+    console.error("❌ Error in pauseGig:", error);
+    next(error);
+  }
+};
+
+
+export const unpauseGig = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const gig = await Gig.findById(id);
+    if (!gig) return next(new ErrorHandler("Gig not found", 404));
+
+    // Ensure user owns the gig
+    if (req.user._id.toString() !== gig.userId.toString()) {
+      return next(new ErrorHandler("Unauthorized", 401));
+    }
+
+    // Only paused gigs can be unpaused
+    if (gig.status !== "pause") {
+      return next(new ErrorHandler("Only paused gigs can be unpaused", 400));
+    }
+
+    gig.status = "active";
+    await gig.save();
+
+    await Notification.create({
+      user: gig.userId,
+      title: "Gig Reactivated",
+      description: `Your gig titled "${gig.gigTitle}" has been reactivated and is live again.`,
+      type: "gig",
+      targetRole: "seller",
+      link: "http://dotask-service-marketplace.vercel.app/seller/services",
+    });
+    const user = await User.findById(gig.userId);
+    const adminEmail = process.env.ADMIN_EMAIL;
+
+    if (user?.email) {
+      const userHtml = `
+        <p>Hi ${user.firstName},</p>
+        <p>Your gig "<strong>${gig.gigTitle}</strong>" has been reactivated and is now live again.</p>
+        <p>Good luck with your upcoming orders!</p>
+      `;
+
+      await transporter.sendMail({
+        from: `"Gig Platform" <${adminEmail}>`,
+        to: user.email,
+        subject: "✅ Your gig is live again",
+        html: generateEmailTemplate({
+          firstName: user.firstName,
+          subject: "Gig Reactivated",
+          content: userHtml,
+        }),
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Gig has been unpaused successfully.",
+      gig,
+    });
+  } catch (error) {
+    console.error("❌ Error in unpauseGig:", error);
     next(error);
   }
 };
