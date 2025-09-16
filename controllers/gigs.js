@@ -724,16 +724,27 @@ export const changeGigStatus = async (req, res, next) => {
 export const getGigById = async (req, res, next) => {
   try {
     const { id } = req.params;
-
+    const { onlyActiveGigs, email } = req.query;
     const gig = await Gig.findById(id).populate("userId").lean();
     if (!gig) {
       return res.status(404).json({
         success: false,
         message: "Gig not found",
       });
-    }
 
-    const sellerId = gig.userId._id.toString();
+    }
+    
+   if (
+      onlyActiveGigs === "true" &&
+      ["draft", "pause"].includes(gig.status) &&
+      email !== gig.userId?.email
+    ) {
+      console.warn("⚠️ Gig blocked due to status:", gig.status);
+      return res.status(403).json({
+        success: false,
+        message: `Gig is in ${gig.status} state`,
+      });
+    }  const sellerId = gig.userId._id.toString();
 
     // Fetch orders involving the seller
     const sellerOrders = await Order.find({ sellerId })
