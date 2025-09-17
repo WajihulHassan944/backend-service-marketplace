@@ -59,4 +59,7 @@ router.get("/rejected", getAllRejectedGigs);
 
 router.get("/status/:action/:id", changeGigStatus);
 
+router.post("/status/:action/:id", changeGigStatus);
+
+
 export default router;

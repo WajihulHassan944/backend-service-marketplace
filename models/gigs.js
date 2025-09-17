@@ -60,10 +60,13 @@ faqs: [
     answer: { type: String, required: true },
   }
 ],
-
+modificationReasons: {
+  type: [String],
+  default: [],
+},
   status: {
     type: String,
-    enum: ["pending", "active", "rejected", "draft","pause"],
+    enum: ["pending", "active", "rejected", "draft","pause","requiresmodification"],
     default: "pending",
   },
 

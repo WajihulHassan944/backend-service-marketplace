@@ -195,18 +195,26 @@ if (user?.email) {
         <p><strong>Gig Title:</strong> ${gigTitle}</p>
         <p><strong>Category:</strong> ${category} / ${subcategory}</p>
         <p><strong>Description:</strong> ${gigDescription.slice(0, 150)}...</p>
-        <div style="margin-top:20px;">
-        <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/approve/${newGig._id}" 
-   style="background-color:#28a745;color:#fff;padding:10px 15px;text-decoration:none;margin-right:10px;border-radius:5px;">
-  Approve
-</a>
+               <div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap;">
+  <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/approve/${newGig._id}" 
+     style="background-color:#28a745;color:#fff;padding:8px 12px;font-size:14px;font-weight:600;
+     text-decoration:none;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+    Approve
+  </a>
 
-<a href="https://backend-service-marketplace.vercel.app/api/gigs/status/reject/${newGig._id}" 
-   style="background-color:#dc3545;color:#fff;padding:10px 15px;text-decoration:none;border-radius:5px;">
+  <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/reject/${newGig._id}" 
+     style="background-color:#dc3545;color:#fff;padding:8px 12px;font-size:14px;font-weight:600;
+     text-decoration:none;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
     Reject
-</a>
+  </a>
 
-        </div>
+  <a href="https://dotask-service-marketplace.vercel.app/admin/manageservices" 
+     style="background-color:#ffc107;color:#000;padding:8px 12px;font-size:14px;font-weight:600;
+     text-decoration:none;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+   Requires Modification
+  </a>
+</div>
+
       `,
     });
 
@@ -433,30 +441,39 @@ if (req.files?.gigPdf?.length > 0) {
     const user = await User.findById(gig.userId);
     const adminEmail = process.env.ADMIN_EMAIL;
       if (req.body.isDraft !== "true") {
-    const adminHtml = `
-      <h2>🔄 Gig Updated & Pending Review</h2>
-      <p><strong>Gig Title:</strong> ${gig.gigTitle}</p>
-      <p><strong>User:</strong> ${user?.firstName} ${user?.lastName} (${user?.email})</p>
-      <p><strong>Description:</strong><br>${gig.gigDescription}</p>
-      <p><strong>Hourly Rate:</strong> $${gig.hourlyRate}</p>
-      <br/>
-      <div>
-       <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/approve/${gig._id}" 
-   style="background-color:#28a745;color:#fff;padding:10px 15px;text-decoration:none;margin-right:10px;border-radius:5px;">
-   Approve
-</a>
+   const adminHtml = `
+  <h2>Gig Updated & Pending Review</h2>
+  <p><strong>Gig Title:</strong> ${gig.gigTitle}</p>
+  <p><strong>User:</strong> ${user?.firstName} ${user?.lastName} (${user?.email})</p>
+  <p><strong>Description:</strong><br>${gig.gigDescription}</p>
+  <p><strong>Hourly Rate:</strong> $${gig.hourlyRate}</p>
+  <br/>
+  <div style="margin-top:20px;display:flex;gap:12px; justify-content:center; align-items:center;">
+    <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/approve/${gig._id}" 
+       style="background-color:#28a745;color:#fff;padding:7px 12px;font-size:12px;font-weight:500;
+       text-decoration:none;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+      Approve
+    </a>
 
-<a href="https://backend-service-marketplace.vercel.app/api/gigs/status/reject/${gig._id}" 
-   style="background-color:#dc3545;color:#fff;padding:10px 15px;text-decoration:none;border-radius:5px;">
-   Reject
-</a>
- </div>
-    `;
+    <a href="https://backend-service-marketplace.vercel.app/api/gigs/status/reject/${gig._id}" 
+       style="background-color:#dc3545;color:#fff;padding:7px 12px;font-size:12px;font-weight:500;
+       text-decoration:none;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+      Reject
+    </a>
+
+    <a href="https://dotask-service-marketplace.vercel.app/admin/manageservices" 
+       style="background-color:#ffc107;color:#000;padding:7px 12px;font-size:12px;font-weight:500;
+       text-decoration:none;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+      Requires Modification
+    </a>
+  </div>
+`;
+
 
     await transporter.sendMail({
       from: `"Gig Platform" <${adminEmail}>`,
       to: 'wajih786hassan@gmail.com',
-      subject: "🔔 A gig has been updated - Review Required",
+      subject: "A gig has been updated - Review Required",
       html: generateEmailTemplate({
         firstName: "Admin",
         subject: "A gig was updated and is awaiting approval",
@@ -627,11 +644,12 @@ function renderHtml(message, type = "info") {
 export const changeGigStatus = async (req, res, next) => {
   try {
     const { action, id } = req.params;
-    const validStatuses = ["active", "pending", "rejected"];
+    const { reason } = req.body; // Only used if requiresmodification
     const statusMap = {
       approve: "active",
       reject: "rejected",
       pending: "pending",
+      requiresmodification: "requiresmodification",
     };
 
     const status = statusMap[action];
@@ -644,27 +662,40 @@ export const changeGigStatus = async (req, res, next) => {
       return res.status(404).send(renderHtml("Gig not found", "danger"));
     }
 
+    // ✅ If requires modification, ensure reason provided
+    if (status === "requiresmodification") {
+      if (!reason || !reason.trim()) {
+        return res.status(400).send(renderHtml("Reason is required for modification", "danger"));
+      }
+      gig.modificationReasons.push(reason.trim());
+    }
+
     gig.status = status;
     await gig.save();
 
     const user = await User.findById(gig.userId);
     if (user?.email) {
-      const subject =
-        status === "active"
-          ? "Your Gig Has Been Approved!"
-          : status === "rejected"
-          ? "Your Gig Has Been Rejected"
-          : "Your Gig Status Has Been Updated";
+      let subject = "";
+      let content = "";
 
-      const content =
-        status === "active"
-          ? `<p>Congratulations <strong>${user.firstName}</strong>! 🎉</p>
-             <p>Your gig titled <strong>${gig.gigTitle}</strong> has been <span style="color:green;"><strong>approved</strong></span>.</p>`
-          : status === "rejected"
-          ? `<p>Dear <strong>${user.firstName}</strong>,</p>
-             <p>Your gig titled <strong>${gig.gigTitle}</strong> was <span style="color:red;"><strong>rejected</strong></span>.</p>`
-          : `<p>Dear <strong>${user.firstName}</strong>,</p>
-             <p>The status of your gig titled <strong>${gig.gigTitle}</strong> has been updated to: <strong>${status}</strong>.</p>`;
+      if (status === "active") {
+        subject = "Your Gig Has Been Approved!";
+        content = `<p>Congratulations <strong>${user.firstName}</strong>! 🎉</p>
+                   <p>Your gig titled <strong>${gig.gigTitle}</strong> has been <span style="color:green;"><strong>approved</strong></span>.</p>`;
+      } else if (status === "rejected") {
+        subject = "Your Gig Has Been Rejected";
+        content = `<p>Dear <strong>${user.firstName}</strong>,</p>
+                   <p>Your gig titled <strong>${gig.gigTitle}</strong> was <span style="color:red;"><strong>rejected</strong></span>.</p>`;
+      } else if (status === "requiresmodification") {
+        subject = "Your Gig Requires Modification";
+        content = `<p>Dear <strong>${user.firstName}</strong>,</p>
+                   <p>Your gig titled <strong>${gig.gigTitle}</strong> requires modification.</p>
+                   <p><strong>Reason:</strong> ${reason}</p>`;
+      } else {
+        subject = "Your Gig Status Has Been Updated";
+        content = `<p>Dear <strong>${user.firstName}</strong>,</p>
+                   <p>The status of your gig titled <strong>${gig.gigTitle}</strong> has been updated to: <strong>${status}</strong>.</p>`;
+      }
 
       const html = generateEmailTemplate({
         firstName: user.firstName,
@@ -672,46 +703,49 @@ export const changeGigStatus = async (req, res, next) => {
         content,
       });
 
-    transporter.sendMail({
-  from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
-  to: user.email,
-  subject,
-  html,
-}).catch(err => {
-  console.error("❌ Email sending failed:", err);
-});
-
+      transporter
+        .sendMail({
+          from: `"Service Marketplace" <${process.env.ADMIN_EMAIL}>`,
+          to: user.email,
+          subject,
+          html,
+        })
+        .catch((err) => {
+          console.error("❌ Email sending failed:", err);
+        });
     }
 
-    const message =
-      status === "active"
-        ? "Gig approved successfully!"
-        : status === "rejected"
-        ? "Gig rejected successfully."
-        : "Gig status set to pending.";
+    let message = "";
+    if (status === "active") message = "Gig approved successfully!";
+    else if (status === "rejected") message = "Gig rejected successfully.";
+    else if (status === "requiresmodification") message = "Gig marked as requiring modification.";
+    else message = "Gig status set to pending.";
 
-        await Notification.create({
-  user: gig.userId,
-  title:
-    status === "active"
-      ? "Gig Approved"
-      : status === "rejected"
-      ? "Gig Rejected"
-      : "Gig Status Updated",
-  description:
-    status === "active"
-      ? `Your gig "${gig.gigTitle}" was approved and is now live.`
-      : status === "rejected"
-      ? `Your gig "${gig.gigTitle}" was rejected by the admin.`
-      : `Status of your gig "${gig.gigTitle}" was updated to "${status}".`,
-  type: "gig",
-  targetRole: "seller",
-  link:
-    status === "rejected"
-      ? ""
-      : "http://dotask-service-marketplace.vercel.app/seller/services",
-});
-
+    await Notification.create({
+      user: gig.userId,
+      title:
+        status === "active"
+          ? "Gig Approved"
+          : status === "rejected"
+          ? "Gig Rejected"
+          : status === "requiresmodification"
+          ? "Gig Requires Modification"
+          : "Gig Status Updated",
+      description:
+        status === "active"
+          ? `Your gig "${gig.gigTitle}" was approved and is now live.`
+          : status === "rejected"
+          ? `Your gig "${gig.gigTitle}" was rejected by the admin.`
+          : status === "requiresmodification"
+          ? `Your gig "${gig.gigTitle}" requires modification. Reason: ${reason}`
+          : `Status of your gig "${gig.gigTitle}" was updated to "${status}".`,
+      type: "gig",
+      targetRole: "seller",
+      link:
+        status === "rejected"
+          ? ""
+          : "http://dotask-service-marketplace.vercel.app/seller/services",
+    });
 
     return res.status(200).send(renderHtml(message, "success"));
   } catch (error) {
@@ -719,7 +753,6 @@ export const changeGigStatus = async (req, res, next) => {
     return res.status(500).send(renderHtml("Internal server error", "danger"));
   }
 };
-
 
 export const getGigById = async (req, res, next) => {
   try {
@@ -736,8 +769,8 @@ export const getGigById = async (req, res, next) => {
     
    if (
       onlyActiveGigs === "true" &&
-      ["draft", "pause"].includes(gig.status) &&
-      email !== gig.userId?.email
+      ["draft", "pause","pending","rejected","requiresmodification"].includes(gig.status) &&
+      email !== gig.userId?.email && email !== "contact@dotask.io"
     ) {
       console.warn("⚠️ Gig blocked due to status:", gig.status);
       return res.status(403).json({
