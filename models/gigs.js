@@ -60,10 +60,13 @@ faqs: [
     answer: { type: String, required: true },
   }
 ],
-modificationReasons: {
-  type: [String],
-  default: [],
-},
+modificationRequests: [
+  {
+    field: { type: String, required: true }, // e.g. "title", "description", "pricing"
+    reason: { type: String, required: true },
+    requestedAt: { type: Date, default: Date.now },
+  }
+],
   status: {
     type: String,
     enum: ["pending", "active", "rejected", "draft","pause","requiresmodification"],

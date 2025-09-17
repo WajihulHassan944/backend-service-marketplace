@@ -211,7 +211,7 @@ if (user?.email) {
   <a href="https://dotask-service-marketplace.vercel.app/admin/manageservices" 
      style="background-color:#ffc107;color:#000;padding:8px 12px;font-size:14px;font-weight:600;
      text-decoration:none;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
-   Requires Modification
+   requiresmodification
   </a>
 </div>
 
@@ -464,7 +464,7 @@ if (req.files?.gigPdf?.length > 0) {
     <a href="https://dotask-service-marketplace.vercel.app/admin/manageservices" 
        style="background-color:#ffc107;color:#000;padding:7px 12px;font-size:12px;font-weight:500;
        text-decoration:none;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
-      Requires Modification
+      requiresmodification
     </a>
   </div>
 `;
@@ -662,13 +662,26 @@ export const changeGigStatus = async (req, res, next) => {
       return res.status(404).send(renderHtml("Gig not found", "danger"));
     }
 
-    // ✅ If requires modification, ensure reason provided
+    // ✅ If requiresmodification, ensure reason provided
     if (status === "requiresmodification") {
-      if (!reason || !reason.trim()) {
-        return res.status(400).send(renderHtml("Reason is required for modification", "danger"));
-      }
-      gig.modificationReasons.push(reason.trim());
+  const { modifications } = req.body; // [{ field: "title", reason: "Too vague" }, ...]
+
+  if (!modifications || !Array.isArray(modifications) || modifications.length === 0) {
+    return res
+      .status(400)
+      .send(renderHtml("At least one modification request is required", "danger"));
+  }
+
+  modifications.forEach(mod => {
+    if (mod.field && mod.reason) {
+      gig.modificationRequests.push({
+        field: mod.field,
+        reason: mod.reason.trim(),
+      });
     }
+  });
+}
+
 
     gig.status = status;
     await gig.save();
@@ -687,11 +700,15 @@ export const changeGigStatus = async (req, res, next) => {
         content = `<p>Dear <strong>${user.firstName}</strong>,</p>
                    <p>Your gig titled <strong>${gig.gigTitle}</strong> was <span style="color:red;"><strong>rejected</strong></span>.</p>`;
       } else if (status === "requiresmodification") {
-        subject = "Your Gig Requires Modification";
-        content = `<p>Dear <strong>${user.firstName}</strong>,</p>
-                   <p>Your gig titled <strong>${gig.gigTitle}</strong> requires modification.</p>
-                   <p><strong>Reason:</strong> ${reason}</p>`;
-      } else {
+  subject = "Your Gig requiresmodification";
+  const reasonsHtml = gig.modificationRequests
+    .map(req => `<li><strong>${req.field}:</strong> ${req.reason}</li>`)
+    .join("");
+
+  content = `<p>Dear <strong>${user.firstName}</strong>,</p>
+             <p>Your gig titled <strong>${gig.gigTitle}</strong> requiresmodification.</p>
+             <ul>${reasonsHtml}</ul>`;
+}  else {
         subject = "Your Gig Status Has Been Updated";
         content = `<p>Dear <strong>${user.firstName}</strong>,</p>
                    <p>The status of your gig titled <strong>${gig.gigTitle}</strong> has been updated to: <strong>${status}</strong>.</p>`;
@@ -729,15 +746,16 @@ export const changeGigStatus = async (req, res, next) => {
           : status === "rejected"
           ? "Gig Rejected"
           : status === "requiresmodification"
-          ? "Gig Requires Modification"
+          ? "Gig requiresmodification"
           : "Gig Status Updated",
       description:
         status === "active"
           ? `Your gig "${gig.gigTitle}" was approved and is now live.`
           : status === "rejected"
           ? `Your gig "${gig.gigTitle}" was rejected by the admin.`
-          : status === "requiresmodification"
-          ? `Your gig "${gig.gigTitle}" requires modification. Reason: ${reason}`
+         : status === "requiresmodification"
+? `Your gig "${gig.gigTitle}" requiresmodification. Fields: ${gig.modificationRequests.map(r => r.field).join(", ")}`
+
           : `Status of your gig "${gig.gigTitle}" was updated to "${status}".`,
       type: "gig",
       targetRole: "seller",
