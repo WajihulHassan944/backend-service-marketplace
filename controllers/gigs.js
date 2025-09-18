@@ -671,7 +671,7 @@ export const changeGigStatus = async (req, res, next) => {
       .status(400)
       .send(renderHtml("At least one modification request is required", "danger"));
   }
-
+gig.modificationRequests = [];
   modifications.forEach(mod => {
     if (mod.field && mod.reason) {
       gig.modificationRequests.push({

@@ -62,7 +62,7 @@ faqs: [
 ],
 modificationRequests: [
   {
-    field: { type: String, required: true }, // e.g. "title", "description", "pricing"
+    field: { type: String, required: true }, 
     reason: { type: String, required: true },
     requestedAt: { type: Date, default: Date.now },
   }
