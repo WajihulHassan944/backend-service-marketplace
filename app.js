@@ -12,6 +12,7 @@ import ordersRouter from "./routes/orders.js";
 import messagesRouter from "./routes/messages.js";
 import categoryRouter from "./routes/category.js";
 import clientRouter from "./routes/clients.js";
+import aiRouter from "./routes/ai.js";
 import cookieParser from "cookie-parser";
 import { errorMiddleware } from "./middlewares/error.js";
 import cors from "cors";
@@ -57,6 +58,7 @@ app.use("/api/notes", notepadRouter);
 app.use("/api/notifications", notificationRouter);
 app.use("/api/email", emailRouter);
 app.use("/api/clients", clientRouter);
+app.use("/api/ai", aiRouter);
 
 app.get("/", (req, res) => {
   res.send("Nice working backend by Muhammad Furqan Wajih");
