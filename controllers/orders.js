@@ -459,7 +459,6 @@ export const deleteOrder = async (req, res, next) => {
 
 
 
-
 export const deliverOrder = async (req, res, next) => {
   try {
     const { orderId } = req.params;
@@ -481,8 +480,18 @@ export const deliverOrder = async (req, res, next) => {
 
     if (req.file) {
       console.log("📁 Received file from frontend:", req.file.originalname);
-      const uploadResult = await uploadToCloudinary(req.file.buffer, req.file.originalname);
-      deliveryFiles.push(uploadResult);
+
+      const uploadResult = await uploadToCloudinary(
+        req.file.buffer,
+        req.file.originalname
+      );
+
+      // ✅ attach originalname along with Cloudinary result
+      deliveryFiles.push({
+        url: uploadResult.url,
+        public_id: uploadResult.public_id,
+        originalname: req.file.originalname,
+      });
     }
 
     // ⬇️ Push new delivery object to the deliveries array
@@ -494,18 +503,20 @@ export const deliverOrder = async (req, res, next) => {
     });
 
     order.status = "delivered";
+    order.timeline.deliveredAt = new Date();
     await order.save();
 
     // Notify Buyer
     const buyer = order.buyerId;
-await Notification.create({
-  user: buyer._id,
-  title: "Order Delivered",
-  description: `Your order for "${order.gigId.gigTitle}" has been delivered.`,
-  type: "order",
-  targetRole: "buyer",
-  link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
-});
+
+    await Notification.create({
+      user: buyer._id,
+      title: "Order Delivered",
+      description: `Your order for "${order.gigId.gigTitle}" has been delivered.`,
+      type: "order",
+      targetRole: "buyer",
+      link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+    });
 
     if (buyer?.email) {
       const html = generateEmailTemplate({
@@ -525,12 +536,12 @@ await Notification.create({
         html,
       });
     }
+
     return res.status(200).json({
       success: true,
       message: "Order delivered successfully.",
       order,
     });
-
   } catch (error) {
     console.error("❌ Error in deliverOrder:", error);
     next(error);
@@ -556,6 +567,8 @@ export const approveFinalDelivery = async (req, res, next) => {
 
     // Mark order as completed
     order.status = "completed";
+    order.timeline.approvedAt = new Date();   // ✅ Buyer approved
+order.timeline.completedAt = new Date(); // ✅ Project closed
     await order.save();
 
     // Handle referral reward 👇
@@ -1160,8 +1173,15 @@ export const respondToResolutionRequest = async (req, res, next) => {
         ? `${isBuyer ? "Buyer" : "Seller"} accepted the resolution request`
         : `${isBuyer ? "Buyer" : "Seller"} rejected the resolution request`;
 
-    // Update order status
-    order.status = action === "accept" ? "cancelled" : "pending";
+        
+  // Update order status
+if (action === "accept") {
+  order.status = "cancelled";
+ order.timeline.cancelledAt = new Date(); 
+} else {
+  order.status = "pending";
+}
+
 
     await order.save();
 
@@ -1463,6 +1483,36 @@ export const requestRevision = async (req, res, next) => {
     });
   } catch (error) {
     console.error("❌ Error in requestRevision:", error);
+    next(error);
+  }
+};
+
+
+// controllers/orderController.js
+
+export const markRequirementsReviewed = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+
+    if (!orderId) {
+      return next(new ErrorHandler("Order ID is required", 400));
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return next(new ErrorHandler("Order not found", 404));
+    }
+
+    order.timeline.requirementsReviewedAt = new Date();
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Requirements marked as reviewed.",
+      timeline: order.timeline,
+    });
+  } catch (error) {
+    console.error("❌ Error in markRequirementsReviewed:", error);
     next(error);
   }
 };

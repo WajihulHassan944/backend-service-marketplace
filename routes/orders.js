@@ -19,6 +19,7 @@ import {
   respondToResolutionRequest,
   getDisputedOrders,
   requestRevision,
+  markRequirementsReviewed,
 } from "../controllers/orders.js";
 
 const router = express.Router();
@@ -54,5 +55,7 @@ router.post("/resolution/:orderId", raiseResolutionRequest);
 router.get("/resolution-response/:orderId", respondToResolutionRequest);
 
 router.get("/disputed", getDisputedOrders);
+
+router.put("/requirements-reviewed/:orderId", markRequirementsReviewed);
 
 export default router;

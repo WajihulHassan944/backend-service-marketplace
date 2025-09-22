@@ -61,14 +61,14 @@ const orderSchema = new mongoose.Schema({
     requestedAt: { type: Date, default: Date.now },
   }
 ],
-
- deliveries: [
+deliveries: [
   {
     deliveredAt: Date,
     files: [
       {
         url: String,
         public_id: String,
+        originalname: String,
       },
     ],
     message: String,
@@ -186,6 +186,13 @@ resolutionRequest: {
   ref: "User",
 },
   resolvedAt: Date,
+},
+timeline: {
+  requirementsReviewedAt: { type: Date },   
+  cancelledAt: { type: Date },     
+  deliveredAt: { type: Date },              
+  approvedAt: { type: Date },               
+  completedAt: { type: Date },              
 },
 
 
