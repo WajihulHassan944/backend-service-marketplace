@@ -59,7 +59,7 @@ app.use("/api/email", emailRouter);
 app.use("/api/clients", clientRouter);
 
 app.get("/", (req, res) => {
-  res.send("Nice working backend by Muhammad Furqan Wajih");
+  res.send("Nice working backend by Wajih ul Hassan for doTask Service Marketplace");
 });
 
 // Using Error Middleware
