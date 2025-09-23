@@ -188,12 +188,35 @@ resolutionRequest: {
   resolvedAt: Date,
 },
 timeline: {
-  requirementsReviewedAt: { type: Date },   
-  cancelledAt: { type: Date },     
-  deliveredAt: { type: Date },              
-  approvedAt: { type: Date },               
-  completedAt: { type: Date },              
+  requirementsReviewedAt: { type: Date },
+  cancelledAt: { type: Date },
+  deliveredAt: { type: Date },
+  approvedAt: { type: Date },
+  completedAt: { type: Date },
+
+  revisionRequests: [
+    {
+      message: { type: String, default: "" },
+      requestedAt: { type: Date, default: Date.now },
+      revisionNumber: { type: Number, required: true },
+    }
+  ],
+  revisionDeliveries: [
+    {
+      files: [
+        {
+          url: String,
+          public_id: String,
+          originalname: String,
+        }
+      ],
+      message: { type: String },
+      deliveredAt: { type: Date, default: Date.now },
+      revisionNumber: { type: Number, required: true },
+    }
+  ],
 },
+
 
 
 isPaid: {

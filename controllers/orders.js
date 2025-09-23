@@ -502,9 +502,26 @@ export const deliverOrder = async (req, res, next) => {
       deliveredAt: new Date(),
     });
 
-    order.status = "delivered";
-    order.timeline.deliveredAt = new Date();
-    await order.save();
+   // Count how many revisions have been requested so far
+const revisionCount = order.timeline.revisionRequests?.length || 0;
+
+if (revisionCount === 0) {
+  // First delivery → mark main deliveredAt
+  order.timeline.deliveredAt = new Date();
+} else {
+  // Delivery of a specific revision → push into revisionDeliveries array
+  order.timeline.revisionDeliveries = order.timeline.revisionDeliveries || [];
+  order.timeline.revisionDeliveries.push({
+    files: deliveryFiles,
+    message,
+    deliveredAt: new Date(),
+    revisionNumber: revisionCount, // match last requested revision
+  });
+}
+
+order.status = "delivered";
+await order.save();
+
 
     // Notify Buyer
     const buyer = order.buyerId;
@@ -1392,14 +1409,16 @@ export const requestRevision = async (req, res, next) => {
       return next(new ErrorHandler("Revision can only be requested for delivered orders.", 400));
     }
 
-     if (order.revisionRequests.length >= order.packageDetails.revisions) {
-      return next(
-        new ErrorHandler(
-          "You have reached the maximum number of revisions for this package.",
-          400
-        )
-      );
-    }
+    const revisionCount = order.timeline.revisionRequests?.length || 0;
+if (revisionCount >= order.packageDetails.revisions) {
+  return next(
+    new ErrorHandler(
+      "You have reached the maximum number of revisions for this package.",
+      400
+    )
+  );
+}
+
 
     order.status = "revision";
 
@@ -1407,7 +1426,12 @@ export const requestRevision = async (req, res, next) => {
     message: message || "",
     requestedAt: new Date(),
 });
-
+order.timeline.revisionRequests = order.timeline.revisionRequests || [];
+order.timeline.revisionRequests.push({
+  message: message || "",
+  requestedAt: new Date(),
+  revisionNumber: revisionCount + 1,
+});
     await order.save();
 
     const buyer = order.buyerId;
