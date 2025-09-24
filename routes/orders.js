@@ -20,6 +20,8 @@ import {
   getDisputedOrders,
   requestRevision,
   markRequirementsReviewed,
+  autoCompleteOrders,
+  updateLastDeliveryDate,
 } from "../controllers/orders.js";
 
 const router = express.Router();
@@ -57,5 +59,9 @@ router.get("/resolution-response/:orderId", respondToResolutionRequest);
 router.get("/disputed", getDisputedOrders);
 
 router.put("/requirements-reviewed/:orderId", markRequirementsReviewed);
+
+router.get("/auto-complete", autoCompleteOrders);
+
+router.put("/orders/:orderId/update-last-delivery", updateLastDeliveryDate);
 
 export default router;

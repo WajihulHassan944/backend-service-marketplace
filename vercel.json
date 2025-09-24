@@ -9,6 +9,10 @@
     {
       "path": "/api/users/cleanup-unverified",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/orders/auto-complete",
+      "schedule": "0 * * * *"
     }
   ]
 }

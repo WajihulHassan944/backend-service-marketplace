@@ -660,6 +660,97 @@ order.timeline.completedAt = new Date(); // ✅ Project closed
   }
 };
 
+
+export const autoCompleteOrders = async (req, res, next) => {
+  try {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - 72 * 60 * 60 * 1000); // 72 hours ago
+
+    // Find orders delivered but not completed/cancelled
+    const orders = await Order.find({
+      status: "delivered",
+      "timeline.deliveredAt": { $exists: true },
+      "timeline.completedAt": { $exists: false },
+      "timeline.cancelledAt": { $exists: false },
+    })
+      .populate("sellerId")
+      .populate("gigId");
+
+    let updatedCount = 0;
+
+    for (const order of orders) {
+      // Get last delivery timestamp (check revisionDeliveries too)
+      let lastDeliveryAt = order.timeline.deliveredAt;
+      if (
+        order.timeline.revisionDeliveries &&
+        order.timeline.revisionDeliveries.length > 0
+      ) {
+        const lastRev =
+          order.timeline.revisionDeliveries[
+            order.timeline.revisionDeliveries.length - 1
+          ];
+        lastDeliveryAt = lastRev.deliveredAt;
+      }
+
+      // Skip if 72h not passed yet
+      if (lastDeliveryAt > cutoff) continue;
+
+      // Mark as completed automatically
+      order.status = "completed";
+      order.timeline.completedAt = now;
+      order.timeline.approvedAt = now; // treat as approved
+      order.timeline.autoCompletedAt = now; // new field for clarity
+
+      // Add system note in timeline
+      order.timeline.systemNote = `Order automatically completed by system (no buyer action within 3 days)`;
+
+      await order.save();
+      updatedCount++;
+
+      // Notify Seller
+      const seller = order.sellerId;
+      await Notification.create({
+        user: seller._id,
+        title: "Order Auto-Completed",
+        description: `Your order for "${order.gigId.gigTitle}" was automatically marked as completed (no buyer action within 3 days).`,
+        type: "order",
+        targetRole: "seller",
+        link: `http://dotask-service-marketplace.vercel.app/order-details?id=${order._id}`,
+      });
+
+      if (seller?.email) {
+        const html = generateEmailTemplate({
+          firstName: seller.firstName,
+          subject: "Order Automatically Completed",
+          content: `
+            <p>Hi ${seller.firstName},</p>
+            <p>Your order for <strong>${order.gigId.gigTitle}</strong> has been automatically completed by the system because the buyer took no action within 3 days.</p>
+            <p>You can now view this completed order in your dashboard.</p>
+          `,
+        });
+
+        await transporter.sendMail({
+          from: `"Marketplace" <${process.env.ADMIN_EMAIL}>`,
+          to: seller.email,
+          subject: "Order Automatically Completed",
+          html,
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `${updatedCount} orders auto-completed.`,
+    });
+  } catch (error) {
+    console.error("❌ Error in autoCompleteOrders:", error);
+    next(error);
+  }
+};
+
+
+
+
 export const addBuyerReview = async (req, res, next) => {
   try {
     const { orderId } = req.params;
@@ -1537,6 +1628,49 @@ export const markRequirementsReviewed = async (req, res, next) => {
     });
   } catch (error) {
     console.error("❌ Error in markRequirementsReviewed:", error);
+    next(error);
+  }
+};
+
+
+
+
+
+export const updateLastDeliveryDate = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    const { newDate } = req.body;
+
+    if (!orderId || !newDate) {
+      return res.status(400).json({ success: false, message: "Order ID and newDate are required" });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    // Check if revisionDeliveries exist
+    if (order.timeline.revisionDeliveries && order.timeline.revisionDeliveries.length > 0) {
+      // Update last revision delivery
+      const lastIndex = order.timeline.revisionDeliveries.length - 1;
+      order.timeline.revisionDeliveries[lastIndex].deliveredAt = new Date(newDate);
+    } else if (order.timeline.deliveredAt) {
+      // Update main delivery date
+      order.timeline.deliveredAt = new Date(newDate);
+    } else {
+      return res.status(400).json({ success: false, message: "No delivery found to update" });
+    }
+
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Last delivery date updated successfully",
+      timeline: order.timeline,
+    });
+  } catch (error) {
+    console.error("❌ Error in updateLastDeliveryDate:", error);
     next(error);
   }
 };

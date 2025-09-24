@@ -186,13 +186,13 @@ resolutionRequest: {
   ref: "User",
 },
   resolvedAt: Date,
-},
-timeline: {
+},timeline: {
   requirementsReviewedAt: { type: Date },
   cancelledAt: { type: Date },
   deliveredAt: { type: Date },
   approvedAt: { type: Date },
   completedAt: { type: Date },
+  autoCompletedAt: { type: Date }, // ✅ new field for system auto-complete
 
   revisionRequests: [
     {
@@ -215,8 +215,9 @@ timeline: {
       revisionNumber: { type: Number, required: true },
     }
   ],
-},
 
+  systemNote: { type: String }, // ✅ single note for system messages
+},
 
 
 isPaid: {
