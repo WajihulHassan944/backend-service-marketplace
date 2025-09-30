@@ -1595,14 +1595,13 @@ export const getSellerProfileData = async (req, res, next) => {
     const portfolios = await Portfolio.find({ user: userId }).lean();
     const clients = await Client.find({ user: userId }).lean();
 
-    // Fetch orders
-    const orders = await Order.find({
-      $or: [{ buyerId: userId }, { sellerId: userId }],
-    })
-      .select("buyerId sellerId buyerReview sellerReview totalAmount status createdAt updatedAt")
-      .populate("buyerId", "firstName lastName email profileUrl country")
-      .populate("sellerId", "firstName lastName email profileUrl country")
-      .lean();
+   const orders = await Order.find({
+  $or: [{ buyerId: userId }, { sellerId: userId }],
+})
+  .select("gigId buyerId sellerId buyerReview sellerReview totalAmount status createdAt updatedAt") // <-- include gigId here
+  .populate("buyerId", "firstName lastName email profileUrl country")
+  .populate("sellerId", "firstName lastName email profileUrl country")
+  .lean();
 
     const buyerReviews = [];
     const sellerReviews = [];
@@ -1616,61 +1615,81 @@ export const getSellerProfileData = async (req, res, next) => {
     let buyerTotalSpent = 0;
     let lastDelivery = null;
 
-    for (const order of orders) {
-      const isBuyer = order.buyerId?._id?.toString() === userId;
-      const isSeller = order.sellerId?._id?.toString() === userId;
+   for (const order of orders) {
+  const isBuyer = order.buyerId?._id?.toString() === userId;
+  const isSeller = order.sellerId?._id?.toString() === userId;
 
-      if (isSeller) {
-        sellerTotalValue += order.totalAmount || 0;
-        if (["pending", "in progress", "delivered"].includes(order.status)) activeOrdersCount++;
-        if (order.status === "completed") {
-          sellerCompletedCount++;
-          const completedAt = new Date(order.updatedAt || order.createdAt);
-          if (!lastDelivery || completedAt > lastDelivery) lastDelivery = completedAt;
-        }
-        if (["pending", "in progress"].includes(order.status)) {
-          sellerWorkInProgress += order.totalAmount || 0;
-        } else if (order.status === "delivered") {
-          sellerInReview += order.totalAmount || 0;
-        }
-      }
-
-      if (isBuyer) {
-        buyerOrdersCount++;
-        buyerTotalSpent += order.totalAmount || 0;
-        if (order.status === "completed") buyerCompletedCount++;
-      }
-
-      if (isBuyer && order.buyerReview?.review) {
-        buyerReviews.push({
-          ...order.buyerReview,
-          timeAgo: timeAgo(order.buyerReview.createdAt),
-          reviewedGigSeller: {
-            _id: order.sellerId,
-            firstName: order.sellerId.firstName,
-            lastName: order.sellerId.lastName,
-            email: order.sellerId.email,
-            profileUrl: order.sellerId.profileUrl || null,
-            country: order.sellerId.country || null,
-          },
-        });
-      }
-
-      if (isSeller && order.sellerReview?.review) {
-        sellerReviews.push({
-          ...order.sellerReview,
-          timeAgo: timeAgo(order.sellerReview.createdAt),
-          reviewedGigBuyer: {
-            _id: order.buyerId._id,
-            firstName: order.buyerId.firstName,
-            lastName: order.buyerId.lastName,
-            email: order.buyerId.email,
-            profileUrl: order.buyerId.profileUrl || null,
-            country: order.buyerId.country || null,
-          },
-        });
-      }
+  if (isSeller) {
+    sellerTotalValue += order.totalAmount || 0;
+    if (["pending", "in progress", "delivered"].includes(order.status)) activeOrdersCount++;
+    if (order.status === "completed") {
+      sellerCompletedCount++;
+      const completedAt = new Date(order.updatedAt || order.createdAt);
+      if (!lastDelivery || completedAt > lastDelivery) lastDelivery = completedAt;
     }
+    if (["pending", "in progress"].includes(order.status)) {
+      sellerWorkInProgress += order.totalAmount || 0;
+    } else if (order.status === "delivered") {
+      sellerInReview += order.totalAmount || 0;
+    }
+  }
+
+  if (isBuyer) {
+    buyerOrdersCount++;
+    buyerTotalSpent += order.totalAmount || 0;
+    if (order.status === "completed") buyerCompletedCount++;
+  }
+
+  // ✅ Buyer review (buyer left review about seller/gig)
+  if (order.buyerReview?.review) {
+    buyerReviews.push({
+      ...order.buyerReview,
+      timeAgo: timeAgo(order.buyerReview.createdAt),
+      reviewedGig: {
+        _id: order.gigId,
+        title: order.gigId?.title || null, // if populated
+      },
+      reviewedSeller: {
+        _id: order.sellerId?._id,
+        firstName: order.sellerId?.firstName,
+        lastName: order.sellerId?.lastName,
+        email: order.sellerId?.email,
+        profileUrl: order.sellerId?.profileUrl || null,
+        country: order.sellerId?.country || null,
+      },
+      reviewerBuyer: {
+        _id: order.buyerId?._id,
+        firstName: order.buyerId?.firstName,
+        lastName: order.buyerId?.lastName,
+        profileUrl: order.buyerId?.profileUrl || null,
+        country: order.buyerId?.country || null,
+      },
+    });
+  }
+
+  // ✅ Seller review (seller left review about buyer)
+  if (order.sellerReview?.review) {
+    sellerReviews.push({
+      ...order.sellerReview,
+      timeAgo: timeAgo(order.sellerReview.createdAt),
+      reviewedBuyer: {
+        _id: order.buyerId?._id,
+        firstName: order.buyerId?.firstName,
+        lastName: order.buyerId?.lastName,
+        email: order.buyerId?.email,
+        profileUrl: order.buyerId?.profileUrl || null,
+        country: order.buyerId?.country || null,
+      },
+      reviewerSeller: {
+        _id: order.sellerId?._id,
+        firstName: order.sellerId?.firstName,
+        lastName: order.sellerId?.lastName,
+        profileUrl: order.sellerId?.profileUrl || null,
+        country: order.sellerId?.country || null,
+      },
+    });
+  }
+}
 
     const chatsCount = await Conversation.countDocuments({
       $or: [{ participantOne: userId }, { participantTwo: userId }],
@@ -1701,11 +1720,39 @@ export const getSellerProfileData = async (req, res, next) => {
         },
       },
     };
+const gigsWithRatings = gigs.map((gig) => {
+  // find orders that belong to this gig and have a buyer review
+  const gigOrderReviews = orders.filter(
+    (o) =>
+      o.gigId?.toString() === gig._id?.toString() &&
+      o.buyerReview &&
+      o.buyerReview.review // ensure there's text (or use existence rule you prefer)
+  );
 
+  const gigReviewCount = gigOrderReviews.length;
+  let gigAvg = 0;
+  if (gigReviewCount > 0) {
+    const sumRatings = gigOrderReviews.reduce(
+      (acc, o) => acc + (o.buyerReview?.overallRating || 0),
+      0
+    );
+    gigAvg = sumRatings / gigReviewCount;
+  }
+
+  return {
+    ...gig,
+    // attach a userId object with the same user fields plus gig-specific rating/count
+    userId: {
+      ...(gig.userId && typeof gig.userId === "object" ? gig.userId : user),
+      averageRating: gigAvg.toFixed(1), // e.g. "4.5"
+      ratingCount: gigReviewCount,      // e.g. 3
+    },
+  };
+});
     return res.status(200).json({
       success: true,
       user: userWithAnalytics,
-      gigs,
+      gigs: gigsWithRatings,
       portfolios,
       buyerReviews,
       sellerReviews,

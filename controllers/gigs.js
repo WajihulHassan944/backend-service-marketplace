@@ -570,15 +570,66 @@ export const getGigsByUserId = async (req, res, next) => {
     console.error("❌ Error in getGigsByUserId:", error);
     next(error);
   }
-};
-
-export const getAllGigs = async (req, res, next) => {
+};export const getAllGigs = async (req, res, next) => {
   try {
-    const gigs = await Gig.find().populate('userId');
+    const gigs = await Gig.find().populate("userId");
+
+    const gigsWithReviews = await Promise.all(
+      gigs.map(async (gig) => {
+        // 🔹 Fetch only orders for this gig with buyer reviews
+        const buyerReviewOrders = await Order.find({
+          sellerId: gig.userId,
+          gigId: gig._id, // ensure reviews are service-specific
+          "buyerReview.review": { $exists: true, $ne: "" },
+        })
+          .populate("buyerId", "firstName lastName email profileUrl country")
+          .sort({ "buyerReview.createdAt": -1 }) // latest first
+          .lean();
+
+        const buyerReviews = buyerReviewOrders.map((order) => ({
+          ...order.buyerReview,
+          timeAgo: timeAgo(order.buyerReview.createdAt),
+          reviewedByBuyer: {
+            _id: order.buyerId._id,
+            firstName: order.buyerId.firstName,
+            lastName: order.buyerId.lastName,
+            email: order.buyerId.email,
+            profileUrl: order.buyerId.profileUrl || null,
+            country: order.buyerId.country || null,
+          },
+        }));
+
+        // gig-level stats (count + average rating)
+        let gigRating = 0;
+        let gigReviewCount = buyerReviews.length;
+        if (gigReviewCount > 0) {
+          const sumRatings = buyerReviews.reduce(
+            (acc, r) => acc + (r.overallRating || 0),
+            0
+          );
+          gigRating = sumRatings / gigReviewCount;
+        }
+
+        return {
+          ...gig.toObject(),
+          buyerReviews: buyerReviews.length
+            ? buyerReviews
+            : [{ message: "No reviews yet for this service." }],
+          gigRating: gigRating.toFixed(1),
+          gigReviewCount,
+          // attach rating + count to seller object as well
+          userId: {
+            ...gig.userId.toObject(),
+            averageRating: gigRating.toFixed(1),
+            ratingCount: gigReviewCount,
+          },
+        };
+      })
+    );
 
     res.status(200).json({
       success: true,
-      gigs,
+      gigs: gigsWithReviews,
     });
   } catch (error) {
     console.error("❌ Error in getAllGigs:", error);
@@ -833,20 +884,21 @@ export const getGigById = async (req, res, next) => {
         sellerInReview += order.totalAmount || 0;
       }
 
-      if (order.sellerReview?.review) {
-        sellerReviews.push({
-          ...order.sellerReview,
-          timeAgo: timeAgo(order.sellerReview.createdAt),
-          reviewedGigBuyer: {
-            _id: order.buyerId._id,
-            firstName: order.buyerId.firstName,
-            lastName: order.buyerId.lastName,
-            email: order.buyerId.email,
-            profileUrl: order.buyerId.profileUrl || null,
-            country: order.buyerId.country || null,
-          },
-        });
-      }
+     if (order.gigId?.toString() === gig._id.toString() && order.sellerReview?.review) {
+  sellerReviews.push({
+    ...order.sellerReview,
+    timeAgo: timeAgo(order.sellerReview.createdAt),
+    reviewedGigBuyer: {
+      _id: order.buyerId._id,
+      firstName: order.buyerId.firstName,
+      lastName: order.buyerId.lastName,
+      email: order.buyerId.email,
+      profileUrl: order.buyerId.profileUrl || null,
+      country: order.buyerId.country || null,
+    },
+  });
+}
+
     }
 
     // Analytics object
@@ -862,9 +914,13 @@ export const getGigById = async (req, res, next) => {
 
     // Fetch buyer reviews for this gig
     const buyerReviewOrders = await Order.find({
-      sellerId: gig.userId,
-      "buyerReview.review": { $exists: true, $ne: "" },
-    }).populate("buyerId", "firstName lastName email profileUrl country");
+  sellerId: gig.userId,
+  gigId: gig._id, // filter reviews for this gig only
+  "buyerReview.review": { $exists: true, $ne: "" },
+})
+  .populate("buyerId", "firstName lastName email profileUrl country")
+  .sort({ "buyerReview.createdAt": -1 }); // latest first
+
 
     const buyerReviews = buyerReviewOrders.map((order) => ({
       ...order.buyerReview,
