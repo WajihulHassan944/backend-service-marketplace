@@ -58,6 +58,10 @@ app.use("/api/notifications", notificationRouter);
 app.use("/api/email", emailRouter);
 app.use("/api/clients", clientRouter);
 
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok", uptime: process.uptime() });
+});
+
 app.get("/", (req, res) => {
   res.send("Nice working backend by Wajih ul Hassan for doTask Service Marketplace");
 });
