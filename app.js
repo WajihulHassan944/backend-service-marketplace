@@ -12,6 +12,7 @@ import ordersRouter from "./routes/orders.js";
 import messagesRouter from "./routes/messages.js";
 import categoryRouter from "./routes/category.js";
 import clientRouter from "./routes/clients.js";
+import rateLimiter, { strictLimiter } from "./middlewares/rateLimiter.js";
 import cookieParser from "cookie-parser";
 import { errorMiddleware } from "./middlewares/error.js";
 import cors from "cors";
@@ -23,6 +24,7 @@ config({
 });
 
 // Using Middlewares
+app.use(rateLimiter);
 app.use(express.json());
 app.use(cookieParser());
 app.use(
@@ -45,6 +47,8 @@ app.use(
 app.options("*", cors());
 
 // Using routes
+// Apply stricter limits to login attempts.
+app.use("/api/users/login", strictLimiter);
 app.use("/api/users", userRouter);
 app.use("/api/category", categoryRouter);
 app.use("/api/gigs", gigsRouter);
