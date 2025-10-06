@@ -6,6 +6,7 @@ const envKeys = [
   "RATE_LIMIT_MESSAGE",
   "RATE_LIMIT_STANDARD_HEADERS",
   "RATE_LIMIT_LEGACY_HEADERS",
+  "RATE_LIMIT_SKIP_PATHS",
   "RATE_LIMIT_STRICT_WINDOW_MS",
   "RATE_LIMIT_STRICT_MAX_REQUESTS",
   "RATE_LIMIT_STRICT_MESSAGE",
@@ -28,6 +29,7 @@ const overrides = {
   RATE_LIMIT_MESSAGE: "Global limit reached",
   RATE_LIMIT_STANDARD_HEADERS: "true",
   RATE_LIMIT_LEGACY_HEADERS: "false",
+  RATE_LIMIT_SKIP_PATHS: "/health",
   RATE_LIMIT_STRICT_WINDOW_MS: "1000",
   RATE_LIMIT_STRICT_MAX_REQUESTS: "1",
   RATE_LIMIT_STRICT_MESSAGE: "Strict limit reached",
@@ -53,7 +55,7 @@ const restoreEnv = () => {
   }
 };
 
-const runLimiter = (limiter, ip = "127.0.0.1") =>
+const runLimiter = (limiter, ip = "127.0.0.1", path = "/") =>
   new Promise((resolve, reject) => {
     const res = {
       statusCode: 200,
@@ -80,7 +82,8 @@ const runLimiter = (limiter, ip = "127.0.0.1") =>
     const req = {
       ip,
       method: "GET",
-      path: "/",
+      path,
+      originalUrl: path,
       headers: {},
       app: {
         get() {
@@ -118,6 +121,9 @@ const testGlobalRateLimiter = async () => {
   });
   assert.equal(blocked.res.headers["ratelimit-limit"], overrides.RATE_LIMIT_MAX_REQUESTS);
   assert.equal(blocked.res.headers["ratelimit-remaining"], "0");
+
+  const bypassed = await runLimiter(rateLimiter, "127.0.0.1", "/health");
+  assert.equal(bypassed.limited, false, "Expected configured health check path to bypass limiter");
 };
 
 const testStrictRateLimiter = async () => {
